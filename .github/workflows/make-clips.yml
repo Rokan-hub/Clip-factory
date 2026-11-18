@@ -138,6 +138,7 @@ jobs:
           path: |
             out/clips/*.mp4
             out/titles_*.csv
+            out/titles_*.docx
             out/moments.json
             out/ai_usage.json
           retention-days: 7

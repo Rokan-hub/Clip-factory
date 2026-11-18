@@ -92,6 +92,16 @@ ol.steps li.ok,ol.steps li.run,ol.steps li.bad { color:var(--ink); }
 .runs .when { color:var(--muted); font-size:12px; }
 .setup ol { padding-left:20px; margin:8px 0 14px; } .setup li { margin:7px 0; }
 code { background:var(--field); border:1px solid var(--line); border-radius:6px; padding:1px 6px; font-size:13px; }
+.res { display:flex; gap:14px; padding:14px 0; border-bottom:1px solid var(--line); }
+.res:last-child { border-bottom:0; }
+.res video { width:96px; height:170px; object-fit:cover; border-radius:10px; background:#000; flex:none; }
+.res .body { flex:1; min-width:0; }
+.res h3 { margin:0 0 6px; font-size:15px; }
+.res .t { font-size:13px; color:var(--muted); margin:0 0 8px; overflow-wrap:anywhere; }
+.res .t b { color:var(--ink); }
+.res .row { gap:6px; }
+button.copied { border-color:var(--good); color:var(--good); }
+.resTop { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
 .hidden { display:none !important; }
 .stack { display:flex; flex-direction:column; gap:18px; min-width:0; }
 </style>
@@ -208,6 +218,11 @@ code { background:var(--field); border:1px solid var(--line); border-radius:6px;
           <div id="runMsg"></div>
           <div class="row" id="runActions"></div>
         </div>
+      </section>
+      <section class="card hidden" id="resCard">
+        <h2>Your reels</h2>
+        <div class="resTop" id="resTop"></div>
+        <div id="resList"></div>
       </section>
       <section class="card">
         <h2>Recent runs <button class="small" id="btnRefresh" type="button">Refresh</button></h2>
@@ -361,6 +376,7 @@ code { background:var(--field); border:1px solid var(--line); border-radius:6px;
   function watch(id) {
     S.runId = id; lsSet("cf.run", String(id));
     clearTimeout(S.timer); stopTicker();
+    $("resCard").classList.add("hidden"); S.shownResults = null;
     showRun(); poll();
   }
   async function poll() {
@@ -391,9 +407,8 @@ code { background:var(--field); border:1px solid var(--line); border-radius:6px;
         S.timer = setTimeout(poll, 8000);
       } else if (run.conclusion === "success") {
         var dur = fmtDur(new Date(run.updated_at).getTime() - started);
-        setRun("ok", "Done. Your reels are ready", "Took " + dur, steps,
-          '<button class="primary" id="btnDl" type="button" style="margin-top:0;width:auto;padding:10px 18px">Download reels (.zip)</button>' + link, "");
-        $("btnDl").addEventListener("click", function () { download(id, runUrl); });
+        setRun("ok", "Done. Your reels are ready", "Took " + dur, steps, link, "");
+        if (S.shownResults !== id) { S.shownResults = id; loadResults(id, runUrl); }
         loadRecent();
       } else {
         var bad = steps.filter(function (s) { return s.state === "bad"; })[0];
@@ -427,6 +442,103 @@ code { background:var(--field); border:1px solid var(--line); border-radius:6px;
     else if (/drive\.google\.com|docs\.google\.com/.test(v)) { kind = "good"; html = "Google Drive link. Make sure it's shared as <b>Anyone with the link</b>."; }
     else { kind = "good"; html = "Direct link. It must end up at the video file itself (like .mp4)."; }
     c.className = "chip show " + kind; c.innerHTML = html;
+  }
+
+  /* ---------- open the finished zip in the browser ---------- */
+  function u16(v, o) { return v.getUint16(o, true); } function u32(v, o) { return v.getUint32(o, true); }
+  function readZip(buf) {
+    var v = new DataView(buf), i = buf.byteLength - 22;
+    while (i >= 0 && u32(v, i) !== 0x06054b50) i--;
+    if (i < 0) throw new Error("not a zip");
+    var n = u16(v, i + 10), off = u32(v, i + 16), out = [], dec = new TextDecoder();
+    for (var k = 0; k < n; k++) {
+      if (u32(v, off) !== 0x02014b50) throw new Error("bad zip");
+      var nl = u16(v, off + 28), el = u16(v, off + 30), cl = u16(v, off + 32);
+      out.push({ method: u16(v, off + 10), csize: u32(v, off + 20), name: dec.decode(new Uint8Array(buf, off + 46, nl)), lho: u32(v, off + 42) });
+      off += 46 + nl + el + cl;
+    }
+    return out;
+  }
+  async function extract(buf, e, type) {
+    var v = new DataView(buf), o = e.lho;
+    var start = o + 30 + u16(v, o + 26) + u16(v, o + 28);
+    var raw = new Blob([new Uint8Array(buf, start, e.csize)]);
+    if (e.method === 0) return new Blob([raw], { type: type });
+    if (e.method !== 8) throw new Error("unsupported zip method");
+    var stream = raw.stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    return new Blob([await new Response(stream).blob()], { type: type });
+  }
+  function parseCsv(t) {
+    var rows = [], row = [], f = "", q = false; t = t.replace(/^﻿/, "");
+    for (var i = 0; i < t.length; i++) {
+      var c = t[i];
+      if (q) { if (c === '"') { if (t[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+      else if (c === '"') q = true;
+      else if (c === ",") { row.push(f); f = ""; }
+      else if (c === "\n") { row.push(f); rows.push(row); row = []; f = ""; }
+      else if (c !== "\r") f += c;
+    }
+    if (f || row.length) { row.push(f); rows.push(row); }
+    return rows;
+  }
+  function saveBlob(blob, name) {
+    var u = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(u); }, 60000);
+  }
+  function copyText(btn, text) {
+    var done = function () { var l = btn.getAttribute("data-l") || btn.textContent; btn.setAttribute("data-l", l); btn.textContent = "Copied"; btn.classList.add("copied");
+      setTimeout(function () { btn.textContent = l; btn.classList.remove("copied"); }, 1400); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text); done(); });
+    else { fallbackCopy(text); done(); }
+  }
+  function fallbackCopy(text) { var t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select(); try { document.execCommand("copy"); } catch (e) {} t.remove(); }
+  var RES = { urls: [] };
+  async function loadResults(id, runUrl, zipBlobPromise) {
+    var card = $("resCard"); card.classList.remove("hidden");
+    $("resTop").innerHTML = ""; $("resList").innerHTML = '<div class="empty">Opening your reels…</div>';
+    RES.urls.forEach(function (u) { URL.revokeObjectURL(u); }); RES.urls = [];
+    try {
+      var a = await gh("/repos/" + S.repo + "/actions/runs/" + id + "/artifacts");
+      var list = a.ok ? ((await a.json()).artifacts || []).filter(function (x) { return !x.expired; }) : [];
+      if (!list.length) { $("resList").innerHTML = '<div class="msg warn">No download found for this run. It may have expired (kept 7 days).</div>'; return; }
+      var z = await gh("/repos/" + S.repo + "/actions/artifacts/" + list[0].id + "/zip");
+      if (!z.ok) throw new Error("zip " + z.status);
+      var zipBlob = await z.blob(), buf = await zipBlob.arrayBuffer(), entries = readZip(buf);
+      var base = function (n) { return n.split("/").pop(); };
+      var mp4 = entries.filter(function (e) { return /\.mp4$/i.test(e.name); }).sort(function (x, y) { return x.name < y.name ? -1 : 1; });
+      var csvE = entries.filter(function (e) { return /\.csv$/i.test(e.name); })[0];
+      var docE = entries.filter(function (e) { return /\.docx$/i.test(e.name); })[0];
+      var info = {};
+      if (csvE) {
+        var rows = parseCsv(await (await extract(buf, csvE, "text/csv")).text());
+        rows.slice(1).forEach(function (r) { if (r[0]) info[r[0]] = { t: r[1] || "", d: r[2] || "", i: r[3] || "" }; });
+      }
+      var top = $("resTop"); top.innerHTML = "";
+      var mk = function (label, cls, fn) { var b = document.createElement("button"); b.type = "button"; b.textContent = label; if (cls) b.className = cls; b.addEventListener("click", fn); top.appendChild(b); return b; };
+      if (docE) mk("Download Word file (titles + descriptions)", "primary", async function () { saveBlob(await extract(buf, docE, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"), base(docE.name)); });
+      top.lastChild && docE && (top.lastChild.style.cssText = "margin-top:0;width:auto;padding:11px 16px;font-size:14px");
+      mk("Download everything (.zip)", "", function () { saveBlob(zipBlob, list[0].name + ".zip"); });
+      var box = $("resList"); box.innerHTML = "";
+      var render = async function (e) {
+        var name = base(e.name), key = name.replace(/\.mp4$/i, ""), meta = info[key] || {};
+        var blob = await extract(buf, e, "video/mp4"), url = URL.createObjectURL(blob); RES.urls.push(url);
+        var div = document.createElement("div"); div.className = "res";
+        div.innerHTML = '<video src="' + url + '#t=0.5" controls preload="metadata" playsinline></video><div class="body"><h3>' + esc(key) + '</h3>' +
+          (meta.t ? '<p class="t"><b>Title:</b> ' + esc(meta.t) + '</p>' : '') + '<div class="row"></div></div>';
+        var row = div.querySelector(".row");
+        var add = function (label, fn) { var b = document.createElement("button"); b.type = "button"; b.className = "small"; b.textContent = label; b.addEventListener("click", function () { fn(b); }); row.appendChild(b); };
+        add("Download", function () { saveBlob(blob, name); });
+        if (meta.t) add("Copy title", function (b) { copyText(b, meta.t); });
+        if (meta.d) add("Copy YouTube text", function (b) { copyText(b, meta.d); });
+        if (meta.i) add("Copy Instagram text", function (b) { copyText(b, meta.i); });
+        box.appendChild(div);
+      };
+      for (var k = 0; k < mp4.length; k++) await render(mp4[k]);
+      if (!mp4.length) box.innerHTML = '<div class="msg warn">The run finished but no reels were found inside.</div>';
+    } catch (err) {
+      $("resList").innerHTML = '<div class="msg warn">Your browser couldn\'t open the reels here. Open the run on GitHub, scroll to <b>Artifacts</b> at the bottom, and click the zip: <a href="' + esc(runUrl) + '" target="_blank" rel="noopener">open run page</a>.</div>';
+    }
   }
   async function download(id, runUrl) {
     var b = $("btnDl"); var label = b.textContent; b.disabled = true; b.textContent = "Fetching…";

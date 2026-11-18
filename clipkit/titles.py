@@ -71,6 +71,22 @@ Rules:
 Return ONLY JSON:
 {{"yt_title": "...", "yt_description": "...", "yt_hashtags": ["#..."], "ig_caption": "...", "ig_hashtags": ["#..."]}}"""
 
+def write_docx(path, ch, rows):
+    """One Word file with every clip's title, description and caption, ready to copy."""
+    from docx import Document
+    from docx.shared import Pt
+    d = Document()
+    d.styles["Normal"].font.name = "Calibri"; d.styles["Normal"].font.size = Pt(11)
+    d.add_heading(f"Clip Factory - {ch}", 0)
+    d.add_paragraph(f"{len(rows)} reels. Copy each title and description straight into YouTube Shorts and Instagram.")
+    for name, yt_t, yt_d, ig, who in rows:
+        d.add_heading(name, 1)
+        for label, text in (("YouTube title", yt_t), ("YouTube description", yt_d), ("Instagram caption", ig)):
+            p = d.add_paragraph(); r = p.add_run(label); r.bold = True
+            for line in str(text).split("\n"): d.add_paragraph(line)
+        d.add_paragraph(f"Written by: {who}").runs[0].italic = True
+    d.save(path)
+
 def main():
     words = load(sys.argv[1]); clips = load(sys.argv[2]); ch = sys.argv[3]
     req = sys.argv[sys.argv.index("--required") + 1] if "--required" in sys.argv else ""
@@ -102,6 +118,8 @@ def main():
     with open(out, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
         w.writerow(["clip", "youtube_title", "youtube_description", "instagram_caption", "written_by"]); w.writerows(rows)
+    try: write_docx(os.path.join(os.getcwd(), f"titles_{ch}.docx"), ch, rows)
+    except Exception as e: print("   (Word file skipped:", e, ")", flush=True)
     llm.save_log(os.path.join(os.getcwd(), "ai_usage.json"))
     print(out, len(rows), "clips")
 
