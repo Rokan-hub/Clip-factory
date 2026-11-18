@@ -14,16 +14,16 @@ Video link ──► Transcribe ──► Pick best moments ──► Pick templ
 ## One-time setup: free keys
 
 Add them in GitHub: repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**.
-All are free with no card. Add as many as you can: the more you add, the more the work is spread out.
+**Free with no card (Nov 2026): Gemini, Groq, OpenRouter, Cloudflare.** Cerebras and Mistral now need payment for API access, so skip them unless you pay; the code still supports them if you ever add a key.
 Never paste a key into any file in the repo (the repo is public).
 
 | Secret name | Get it at | Job it does |
 |---|---|---|
 | `GEMINI_API_KEY` | aistudio.google.com/apikey | **Main: picks the best moments** (reads the whole transcript) |
 | `GROQ_API_KEY` | console.groq.com/keys | **Main: transcription** (cloud Whisper) + writes titles |
-| `CEREBRAS_API_KEY` | cloud.cerebras.ai | Writes titles, backup moment picker |
-| `MISTRAL_API_KEY` | console.mistral.ai | Writes titles, 2nd moment picker |
-| `OPENROUTER_API_KEY` | openrouter.ai/keys | Writes titles, last backup |
+| `CEREBRAS_API_KEY` | cloud.cerebras.ai (paid credits now, optional) | Writes titles, backup moment picker |
+| `MISTRAL_API_KEY` | console.mistral.ai (paid plan now, optional) | Writes titles, 2nd moment picker |
+| `OPENROUTER_API_KEY` | openrouter.ai/keys (never add credits; only `:free` models are used) | Writes titles, last backup |
 | `CF_ACCOUNT_ID` + `CF_API_TOKEN` | dash.cloudflare.com → AI → Workers AI → Use REST API | Backup transcription |
 
 ### How the work is split
