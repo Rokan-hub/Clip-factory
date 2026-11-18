@@ -161,8 +161,8 @@ def main():
     # 4. titles
     print("== 5/5 writing titles", flush=True)
     clips_json = os.path.join(out, "clips.json")
-    json.dump([{"name": f"{m['name']}_{m['template']}", "start": m["start"], "end": m["end"], "hook": m.get("hook", "")}
-               for m in done], open(clips_json, "w"))
+    json.dump([{"name": f"{m['name']}_{m['template']}", "start": m["start"], "end": m["end"], "hook": m.get("hook", ""),
+                "template": m["template"]} for m in done], open(clips_json, "w"))
     cmd = [sys.executable, os.path.join(K, "titles.py"), words_path, clips_json, a.channel]
     if a.required: cmd += ["--required", a.required]
     sh(cmd, cwd=out)

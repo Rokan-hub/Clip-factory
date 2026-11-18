@@ -11,15 +11,32 @@ Video link ──► Transcribe ──► Pick best moments ──► Pick templ
                                 (no talking? → loudest action moments)
 ```
 
-## One-time setup
+## One-time setup: free keys
 
-1. **Keys (both free, no card):**
-   - Gemini: https://aistudio.google.com/apikey → **Create API key**
-   - Groq (optional but recommended, makes transcription ~10x faster): https://console.groq.com/keys
-2. **Save them in GitHub:** repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
-   - `GEMINI_API_KEY` = your Gemini key
-   - `GROQ_API_KEY` = your Groq key
-   Never paste keys into any file in the repo (the repo is public).
+Add them in GitHub: repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**.
+All are free with no card. Add as many as you can: the more you add, the more the work is spread out.
+Never paste a key into any file in the repo (the repo is public).
+
+| Secret name | Get it at | Job it does |
+|---|---|---|
+| `GEMINI_API_KEY` | aistudio.google.com/apikey | **Main: picks the best moments** (reads the whole transcript) |
+| `GROQ_API_KEY` | console.groq.com/keys | **Main: transcription** (cloud Whisper) + writes titles |
+| `CEREBRAS_API_KEY` | cloud.cerebras.ai | Writes titles, backup moment picker |
+| `MISTRAL_API_KEY` | console.mistral.ai | Writes titles, 2nd moment picker |
+| `OPENROUTER_API_KEY` | openrouter.ai/keys | Writes titles, last backup |
+| `CF_ACCOUNT_ID` + `CF_API_TOKEN` | dash.cloudflare.com → AI → Workers AI → Use REST API | Backup transcription |
+
+### How the work is split
+
+| Job | Order (first = main worker, rest = backups) |
+|---|---|
+| Transcription | Groq → Cloudflare → local Whisper on GitHub (free, slower) |
+| Picking moments + template | Gemini → Mistral → Cerebras → Groq → OpenRouter → free keyword picker |
+| Titles / descriptions / hashtags | **Rotated per clip:** clip 1 Groq, clip 2 Cerebras, clip 3 Mistral, clip 4 OpenRouter, clip 5 Gemini… → free pattern writer |
+
+If a provider fails or runs out of free quota, the next one takes over, and a provider that hit its limit is skipped for the rest of the run.
+The run page shows **"Who did the work"**, and `ai_usage.json` in the download has the details.
+Change models with secrets such as `GROQ_MODEL`, `CEREBRAS_MODEL`, `MISTRAL_MODEL`, `OPENROUTER_MODEL`, `GEMINI_MODEL` if a provider retires one.
 
 ## Make reels
 
@@ -31,7 +48,7 @@ Video link ──► Transcribe ──► Pick best moments ──► Pick templ
    - **count**: 5, 6 or 7 reels
    - **required_text**: campaign tags/mentions for the descriptions (optional)
 3. When it's green: open the run → **Artifacts** → download `clips-channelX`.
-   Inside: `clip01_gta_chase.mp4` … (the name shows the template used), `titles_channelX.csv`, `moments.json` (why each moment was picked).
+   Inside: `clip01_gta_chase.mp4` … (the name shows the template used), `titles_channelX.csv` (AI-written YouTube title + description + hashtags and a separate Instagram caption + hashtags, plus which provider wrote them), `moments.json` (why each moment was picked).
 4. Watch every clip and check the campaign rules before posting.
 
 ## Templates
@@ -59,16 +76,17 @@ a progress bar along the top (keeps people watching), loudness normalised to −
 |---|---|
 | `.github/workflows/make-clips.yml` | The Run button |
 | `clipkit/run_pipeline.py` | Runs every step; no-speech fallback; template choice |
-| `clipkit/transcribe.py` | Groq Whisper (cloud, fast) → local Whisper backup |
-| `clipkit/pick_moments.py` | Gemini → Groq → keyword picker, scored on Hook / Retention / Satisfaction / Psychology |
+| `clipkit/transcribe.py` | Groq Whisper → Cloudflare Whisper → local Whisper |
+| `clipkit/llm.py` | The router: which provider does which job, fallbacks, quota skipping |
+| `clipkit/pick_moments.py` | Picks moments scored on Hook / Retention / Satisfaction / Psychology |
 | `clipkit/engine.py` | The editor (cuts, 9:16, captions, zooms, shake, grades, flashes, replays, SFX, audio) |
 | `clipkit/templates.json` | All templates (edit to tweak looks) |
 | `clipkit/channels.json` | Per-channel font, colours, emojis, calls to action |
-| `clipkit/titles.py` + `trends.json` | Titles, descriptions, hashtags. Edit `trends.json` to change hashtags/title styles |
+| `clipkit/titles.py` + `trends.json` | AI titles/descriptions/hashtags per platform; `trends.json` feeds the free backup writer |
 
 ## Notes
 
-- Free Gemini/Groq requests may be used by the providers to improve their products. Don't send private material.
+- Free-tier requests to these providers may be used by the providers to improve their products. Don't send private material.
 - YouTube blocks downloads from GitHub's servers: download the source yourself and share a Drive link.
 - Groq's free tier caps each audio file at 25 MB; the script splits audio into 10-minute pieces automatically.
 - In-game radio songs can trigger copyright claims. Prefer footage with the radio off.

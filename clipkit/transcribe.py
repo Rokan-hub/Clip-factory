@@ -2,7 +2,8 @@
 """Usage: transcribe.py audio.wav words.json   (16 kHz mono 16-bit wav)
 
 1st choice: Groq Whisper large-v3-turbo (free tier, cloud, very fast) if GROQ_API_KEY is set.
-2nd choice: faster-whisper on this machine (free, slower).
+2nd choice: Cloudflare Workers AI Whisper (free daily allowance) if CF_ACCOUNT_ID + CF_API_TOKEN are set.
+3rd choice: faster-whisper on this machine (free, slower).
 Env: WHISPER_MODEL (local, default small), WHISPER_LANG (default en), GROQ_STT_MODEL
 """
 import glob, json, os, subprocess, sys, tempfile, time, uuid, urllib.request, urllib.error
@@ -37,16 +38,33 @@ def groq_chunk(path, key, model):
             raise RuntimeError(f"Groq STT HTTP {e.code}: {msg}")
     raise RuntimeError("Groq STT retries exhausted")
 
-def groq(audio, key):
-    model = os.environ.get("GROQ_STT_MODEL", "whisper-large-v3-turbo")
+def chunks(audio):
     d = tempfile.mkdtemp()
     # 10-minute mp3 chunks (~3.6 MB each, well under the 25 MB free-tier file limit)
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", audio, "-ac", "1", "-ar", "16000", "-c:a", "libmp3lame",
                     "-b:a", "48k", "-f", "segment", "-segment_time", "600", "-reset_timestamps", "1",
                     os.path.join(d, "c%03d.mp3")], check=True)
+    return sorted(glob.glob(os.path.join(d, "c*.mp3")))
+
+def cloudflare_chunk(path, acct, token):
+    url = f"https://api.cloudflare.com/client/v4/accounts/{acct}/ai/run/@cf/openai/whisper"
+    for attempt in range(3):
+        req = urllib.request.Request(url, data=open(path, "rb").read(),
+                                     headers={"Authorization": f"Bearer {token}", "User-Agent": "clip-factory",
+                                              "Content-Type": "application/octet-stream"})
+        try:
+            with urllib.request.urlopen(req, timeout=300) as r:
+                return json.load(r)["result"].get("words") or []
+        except urllib.error.HTTPError as e:
+            msg = e.read().decode()[:300]
+            if e.code in (429, 500, 503) and attempt < 2:
+                time.sleep(20 * (attempt + 1)); continue
+            raise RuntimeError(f"Cloudflare STT HTTP {e.code}: {msg}")
+
+def cloud(audio, fn):
     words, off = [], 0.0
-    for p in sorted(glob.glob(os.path.join(d, "c*.mp3"))):
-        for w in groq_chunk(p, key, model):
+    for p in chunks(audio):
+        for w in fn(p):
             words.append({"w": w["word"].strip(), "s": round(off + w["start"], 3), "e": round(off + w["end"], 3)})
         off += dur(p)
         print("t=%.0f" % off, flush=True)
@@ -75,9 +93,16 @@ if __name__ == "__main__":
     key = os.environ.get("GROQ_API_KEY", "").strip()
     if key:
         try:
-            words = groq(audio, key); how = "groq cloud whisper"
+            m = os.environ.get("GROQ_STT_MODEL", "whisper-large-v3-turbo")
+            words = cloud(audio, lambda p: groq_chunk(p, key, m)); how = "groq cloud whisper"
         except Exception as ex:
-            print("WARNING: Groq transcription failed, using local Whisper ->", ex, file=sys.stderr)
+            print("WARNING: Groq transcription failed, trying the next option ->", ex, file=sys.stderr)
+    acct, tok = os.environ.get("CF_ACCOUNT_ID", "").strip(), os.environ.get("CF_API_TOKEN", "").strip()
+    if words is None and acct and tok:
+        try:
+            words = cloud(audio, lambda p: cloudflare_chunk(p, acct, tok)); how = "cloudflare whisper"
+        except Exception as ex:
+            print("WARNING: Cloudflare transcription failed, using local Whisper ->", ex, file=sys.stderr)
     if words is None:
         words = local(audio)
     json.dump(words, open(out, "w"))

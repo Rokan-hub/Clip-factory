@@ -162,23 +162,18 @@ def main():
     words = json.load(open(a.words))
     templates = json.loads(a.templates) if a.templates else None
     moments, how = [], "heuristic"
-    # brain 1: Gemini (Google AI Studio)   brain 2: Groq   brain 3: free keyword heuristic
-    brains = []
-    if os.environ.get("GEMINI_API_KEY", "").strip():
-        m = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
-        brains.append((f"gemini:{m}", lambda p: call_gemini(p, os.environ["GEMINI_API_KEY"].strip(), m), 400_000))
-    if os.environ.get("GROQ_API_KEY", "").strip():
-        m2 = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
-        brains.append((f"groq:{m2}", lambda p: call_groq(p, os.environ["GROQ_API_KEY"].strip(), m2), 24_000))
-    if not brains:
+    import llm
+    if not llm.available("moments"):
         print("NOTE: no AI key set, using the free keyword heuristic.", file=sys.stderr)
-    for name, fn, limit in brains:
-        try:
-            raw = parse(fn(build_prompt(words, a.count + 3, a.min, a.max, templates, limit)))
-            moments = finalize(raw, words, a.count, a.min, a.max, templates)
-            if moments: how = name; break
-        except Exception as ex:
-            print(f"WARNING: {name} failed, trying the next option ->", ex, file=sys.stderr)
+    def check(raw):
+        if isinstance(raw, dict): raw = raw.get("moments") or raw.get("clips") or []
+        out = finalize(raw, words, a.count, a.min, a.max, templates)
+        if not out: raise ValueError("no usable moments in reply")
+        return out
+    res, prov = llm.ask("moments", lambda pv: build_prompt(words, a.count + 3, a.min, a.max, templates, llm.limit(pv)),
+                        check=check)
+    if res: moments, how = res, prov
+    llm.save_log(os.path.join(os.path.dirname(os.path.abspath(a.out)), "ai_usage.json"))
     if not moments:
         moments = finalize(heuristic_pick(words, a.count, a.min, a.max), words, a.count, a.min, a.max); how = "heuristic"
     for i, m in enumerate(moments, 1): m["name"] = f"clip{i:02d}"
