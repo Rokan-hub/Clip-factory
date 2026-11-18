@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clip Factory</title>
+<style>
+/* Plan: one-screen control panel. Dark workshop palette with a single signal-yellow accent (matches channel 1). Left: the job form. Right: live run. */
+:root {
+  --bg: #f4f4f1; --panel: #ffffff; --ink: #17181a; --muted: #62656b; --line: #dcdcd6;
+  --accent: #f5c400; --accent-ink: #1a1500; --good: #17803d; --bad: #c4261d; --warn: #9a6700; --field: #fbfbf9;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1012; --panel: #17181b; --ink: #ececea; --muted: #9a9da4; --line: #2a2c31;
+    --accent: #f5c400; --accent-ink: #1a1500; --good: #3fcf72; --bad: #ff6b60; --warn: #e3b341; --field: #101114;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1012; --panel: #17181b; --ink: #ececea; --muted: #9a9da4; --line: #2a2c31;
+  --accent: #f5c400; --accent-ink: #1a1500; --good: #3fcf72; --bad: #ff6b60; --warn: #e3b341; --field: #101114;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color-scheme: light dark; }
+:root[data-theme="dark"] body { color-scheme: dark; }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 20px 16px 48px; }
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+h1 { font-size: 20px; margin: 0; letter-spacing: .2px; display: flex; align-items: center; gap: 10px; }
+.mark { width: 14px; height: 26px; background: var(--accent); border-radius: 3px; display: inline-block; }
+.sub { color: var(--muted); font-size: 13px; }
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+.card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 14px; font-weight: 600; }
+label.lbl { display: block; font-weight: 600; margin: 14px 0 6px; }
+label.lbl:first-of-type { margin-top: 0; }
+.hint { color: var(--muted); font-size: 13px; margin-top: 4px; }
+input[type=text], input[type=password], select { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); font: inherit; }
+input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { flex: 1 1 0; min-width: 84px; text-align: center; padding: 9px 8px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; background: var(--field); font-weight: 600; font-size: 14px; }
+.seg label small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+.seg input:checked + label { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+.seg input:checked + label small { color: var(--accent-ink); opacity: .75; }
+.seg input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 2px; }
+button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 9px 14px; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; padding: 13px 16px; width: 100%; font-size: 16px; margin-top: 18px; }
+button.primary:disabled { opacity: .5; cursor: not-allowed; }
+button.small { padding: 6px 10px; font-size: 13px; }
+a.btnlink { display: inline-block; text-decoration: none; border: 1px solid var(--line); background: var(--field); color: var(--ink); border-radius: 8px; padding: 10px 14px; }
+a { color: inherit; }
+.status { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
+.dot { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.run { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+.dot.ok { background: var(--good); } .dot.bad { background: var(--bad); }
+@keyframes pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .dot.run { animation: none; } }
+.meta { color: var(--muted); font-size: 13px; margin: 4px 0 14px; font-variant-numeric: tabular-nums; }
+ol.steps { list-style: none; padding: 0; margin: 0 0 14px; }
+ol.steps li { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+ol.steps li:last-child { border-bottom: 0; }
+.si { width: 18px; text-align: center; flex: none; font-weight: 700; }
+.si.ok { color: var(--good); } .si.bad { color: var(--bad); } .si.run { color: var(--accent); } .si.wait { color: var(--muted); }
+.msg { padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--field); margin: 10px 0; font-size: 14px; }
+.msg.bad { border-color: var(--bad); } .msg.good { border-color: var(--good); } .msg.warn { border-color: var(--warn); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.empty { color: var(--muted); padding: 22px 4px; text-align: center; }
+.runs { list-style: none; margin: 0; padding: 0; }
+.runs li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.runs li:last-child { border-bottom: 0; }
+.runs .grow { flex: 1; min-width: 0; }
+.setup ol { padding-left: 20px; margin: 8px 0 14px; }
+.setup li { margin: 6px 0; }
+code { background: var(--field); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; font-size: 13px; }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1><span class="mark"></span>Clip Factory</h1>
+      <div class="sub" id="who">Not connected</div>
+    </div>
+    <button class="small" id="btnSettings" type="button">Settings</button>
+  </header>
+
+  <section class="card setup hidden" id="setup" style="margin-bottom:16px">
+    <h2>One-time setup (2 minutes)</h2>
+    <p style="margin-top:0">This page needs a key that lets it press the "Run" button on your GitHub repo for you. The key stays in this browser only.</p>
+    <ol>
+      <li>Open <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com/settings/personal-access-tokens/new</a>.</li>
+      <li><b>Token name:</b> <code>clip-factory</code>. <b>Expiration:</b> 90 days.</li>
+      <li><b>Repository access:</b> choose <b>Only select repositories</b>, then pick <b>Clip-factory</b>.</li>
+      <li>Click <b>Add permissions</b> (or open <b>Repository permissions</b>) and set <b>Actions</b> to <b>Read and write</b>. Leave everything else.</li>
+      <li>Click <b>Generate token</b> and copy it (it starts with <code>github_pat_</code>).</li>
+    </ol>
+    <label class="lbl" for="repo">Your repo</label>
+    <input type="text" id="repo" value="Rokan-hub/Clip-factory" autocomplete="off" spellcheck="false">
+    <label class="lbl" for="token">Paste the key here</label>
+    <input type="password" id="token" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
+    <div class="row" style="margin-top:12px">
+      <button class="primary" id="btnSave" type="button" style="margin-top:0;width:auto;padding:10px 18px">Save and test</button>
+      <button class="small hidden" id="btnForget" type="button">Forget key</button>
+    </div>
+    <div id="setupMsg"></div>
+  </section>
+
+  <div class="grid">
+    <section class="card" id="formCard">
+      <h2>New job</h2>
+      <label class="lbl" for="url">Video link</label>
+      <input type="text" id="url" placeholder="https://drive.google.com/file/d/..." autocomplete="off" spellcheck="false">
+      <div class="hint">Google Drive: Share, then "Anyone with the link". Or a direct .mp4 link.</div>
+
+      <label class="lbl">Channel</label>
+      <div class="seg" id="segChannel">
+        <input type="radio" name="channel" id="ch1" value="channel1" checked><label for="ch1">Channel 1<small>GTA 6</small></label>
+        <input type="radio" name="channel" id="ch2" value="channel2"><label for="ch2">Channel 2<small>Stream</small></label>
+        <input type="radio" name="channel" id="ch3" value="channel3"><label for="ch3">Channel 3<small>Video</small></label>
+      </div>
+
+      <label class="lbl">Reels from this video</label>
+      <div class="seg" id="segCount">
+        <input type="radio" name="count" id="c5" value="5" checked><label for="c5">5</label>
+        <input type="radio" name="count" id="c6" value="6"><label for="c6">6</label>
+        <input type="radio" name="count" id="c7" value="7"><label for="c7">7</label>
+      </div>
+
+      <label class="lbl" for="template">Style</label>
+      <select id="template">
+        <option value="auto">Auto: AI picks the best style for each clip</option>
+        <optgroup label="GTA 6">
+          <option value="gta_moment">gta_moment: big gameplay moment</option>
+          <option value="gta_react">gta_react: facecam + gameplay</option>
+          <option value="gta_list">gta_list: hidden details, lists</option>
+          <option value="gta_chase">gta_chase: police chase</option>
+          <option value="gta_heist">gta_heist: heist, big money</option>
+          <option value="gta_fail">gta_fail: fails, glitches</option>
+          <option value="gta_cinematic">gta_cinematic: graphics, scenery</option>
+        </optgroup>
+        <optgroup label="Stream">
+          <option value="stream_clutch">stream_clutch: big plays</option>
+          <option value="stream_funny">stream_funny: funny moments</option>
+        </optgroup>
+        <optgroup label="Video">
+          <option value="video_story">video_story: story payoff</option>
+          <option value="video_talk">video_talk: talking head</option>
+        </optgroup>
+      </select>
+
+      <label class="lbl" for="req">Campaign text <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+      <input type="text" id="req" placeholder="@brand #ad" autocomplete="off" spellcheck="false">
+      <div class="hint">Goes into every description.</div>
+
+      <button class="primary" id="btnGo" type="button">Make reels</button>
+      <div id="formMsg"></div>
+    </section>
+
+    <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+      <section class="card" id="runCard">
+        <h2>Current run</h2>
+        <div id="runEmpty" class="empty">Nothing running. Fill in the form and press <b>Make reels</b>.</div>
+        <div id="runBody" class="hidden">
+          <div class="status"><span class="dot" id="runDot"></span><span id="runTitle">Starting</span></div>
+          <div class="meta" id="runMeta"></div>
+          <ol class="steps" id="runSteps"></ol>
+          <div id="runMsg"></div>
+          <div class="row" id="runActions"></div>
+        </div>
+      </section>
+      <section class="card">
+        <h2>Recent runs</h2>
+        <ul class="runs" id="recent"><li class="empty">Connect to see your runs.</li></ul>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+(function () {
+  var API = "https://api.github.com";
+  var WORKFLOW = "make-clips.yml";
+  var $ = function (id) { return document.getElementById(id); };
+  var S = { repo: "", token: "", branch: "main", runId: null, timer: null, ticker: null, startedAt: 0 };
+
+  /* ---------- storage (may be unavailable) ---------- */
+  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
+
+  /* ---------- helpers ---------- */
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function msg(el, kind, html) { el.innerHTML = html ? '<div class="msg ' + kind + '">' + html + '</div>' : ""; }
+  function fmtDur(ms) { var s = Math.max(0, Math.round(ms / 1000)); var m = Math.floor(s / 60); return m + ":" + String(s % 60).padStart(2, "0"); }
+  function ago(iso) {
+    var s = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (s < 60) return "just now"; if (s < 3600) return Math.round(s / 60) + " min ago";
+    if (s < 86400) return Math.round(s / 3600) + " h ago"; return Math.round(s / 86400) + " d ago";
+  }
+  function gh(path, opts) {
+    opts = opts || {};
+    var h = { "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "Authorization": "Bearer " + S.token };
+    if (opts.body) h["Content-Type"] = "application/json";
+    return fetch(API + path, { method: opts.method || "GET", headers: h, body: opts.body, cache: "no-store" });
+  }
+  function explain(res, what) {
+    if (res.status === 401) return "GitHub says the key is wrong or expired. Open Settings and paste a new one.";
+    if (res.status === 403) return "GitHub refused " + what + ". Check the key has <b>Actions: Read and write</b> on this repo.";
+    if (res.status === 404) return "GitHub can't find " + what + ". Check the repo name, and that the key was made for this repo.";
+    if (res.status === 422) return "GitHub rejected the form. Check the video link and options.";
+    return "GitHub answered " + res.status + " for " + what + ".";
+  }
+
+  /* ---------- setup ---------- */
+  function showSetup(open) {
+    $("setup").classList.toggle("hidden", !open);
+    $("btnForget").classList.toggle("hidden", !S.token);
+  }
+  function setConnected(login) {
+    $("who").textContent = login ? "Connected as " + login + " · " + S.repo : "Not connected";
+  }
+  async function connect(save) {
+    var repo = $("repo").value.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\/+$/, "");
+    var token = $("token").value.trim() || S.token;
+    if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) { msg($("setupMsg"), "bad", "Repo should look like <code>Rokan-hub/Clip-factory</code>."); return false; }
+    if (!token) { msg($("setupMsg"), "bad", "Paste the key first."); return false; }
+    S.repo = repo; S.token = token;
+    msg($("setupMsg"), "warn", "Testing…");
+    try {
+      var me = await gh("/user");
+      if (!me.ok) { msg($("setupMsg"), "bad", explain(me, "your account")); return false; }
+      var login = (await me.json()).login;
+      var r = await gh("/repos/" + repo);
+      if (!r.ok) { msg($("setupMsg"), "bad", explain(r, "the repo " + esc(repo))); return false; }
+      S.branch = (await r.json()).default_branch || "main";
+      var w = await gh("/repos/" + repo + "/actions/workflows/" + WORKFLOW);
+      if (!w.ok) { msg($("setupMsg"), "bad", w.status === 404
+        ? "Repo found, but the <b>Make clips</b> workflow isn't in it. Check <code>.github/workflows/make-clips.yml</code> exists."
+        : explain(w, "the workflow")); return false; }
+      if (save) { lsSet("cf.repo", repo); lsSet("cf.token", token); }
+      $("token").value = ""; setConnected(login);
+      msg($("setupMsg"), "good", "Connected. You're ready.");
+      showSetup(false); loadRecent(); return true;
+    } catch (e) {
+      msg($("setupMsg"), "bad", "Couldn't reach GitHub. Check your internet and try again.");
+      return false;
+    }
+  }
+
+  /* ---------- starting a job ---------- */
+  function val(name) { var el = document.querySelector('input[name="' + name + '"]:checked'); return el ? el.value : ""; }
+  async function start() {
+    msg($("formMsg"), "", "");
+    var url = $("url").value.trim();
+    if (!S.token) { showSetup(true); msg($("formMsg"), "warn", "Connect GitHub first (one time)."); return; }
+    if (!/^https?:\/\/\S+$/.test(url)) { msg($("formMsg"), "bad", "Paste the full video link, starting with <code>https://</code>."); return; }
+    var inputs = { source_url: url, channel: val("channel"), template: $("template").value, count: val("count"), required_text: $("req").value.trim() };
+    saveForm();
+    $("btnGo").disabled = true; $("btnGo").textContent = "Starting…";
+    try {
+      var t0 = Date.now();
+      var res = await gh("/repos/" + S.repo + "/actions/workflows/" + WORKFLOW + "/dispatches",
+        { method: "POST", body: JSON.stringify({ ref: S.branch, inputs: inputs }) });
+      if (res.status !== 204) {
+        var detail = ""; try { detail = (await res.json()).message || ""; } catch (e) {}
+        msg($("formMsg"), "bad", explain(res, "the run") + (detail ? "<br><small>" + esc(detail) + "</small>" : "")); return;
+      }
+      var serverNow = res.headers.get("date") ? new Date(res.headers.get("date")).getTime() : t0;
+      var since = Math.min(serverNow, t0) - 20000;
+      showRun(); setRun("run", "Starting…", "Asking GitHub to start your job", [], "", "");
+      var run = null;
+      for (var i = 0; i < 15 && !run; i++) {
+        await sleep(i === 0 ? 2500 : 4000);
+        var l = await gh("/repos/" + S.repo + "/actions/workflows/" + WORKFLOW + "/runs?event=workflow_dispatch&per_page=5");
+        if (l.ok) {
+          var runs = (await l.json()).workflow_runs || [];
+          run = runs.filter(function (r) { return new Date(r.created_at).getTime() >= since; })[0] || null;
+        }
+      }
+      if (!run) { msg($("runMsg"), "warn", "GitHub accepted the job but the run hasn't shown up yet. Check the <a href=\"https://github.com/" + S.repo + "/actions\" target=\"_blank\" rel=\"noopener\">Actions page</a>."); return; }
+      watch(run.id);
+    } catch (e) {
+      msg($("formMsg"), "bad", "Couldn't reach GitHub. Check your internet and try again.");
+    } finally {
+      $("btnGo").disabled = false; $("btnGo").textContent = "Make reels";
+    }
+  }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  /* ---------- watching a run ---------- */
+  var FRIENDLY = {
+    "Install ffmpeg and fonts": "Installing the editing tools",
+    "Install Python packages": "Installing packages",
+    "Get the source video": "Downloading your video",
+    "Make the clips": "Transcribing, picking moments, editing reels",
+    "Show summary": "Writing the summary",
+    "Upload clips": "Packing the download"
+  };
+  function showRun() { $("runEmpty").classList.add("hidden"); $("runBody").classList.remove("hidden"); }
+  function setRun(kind, title, meta, steps, actionsHtml, messageHtml) {
+    $("runDot").className = "dot " + kind; $("runTitle").textContent = title; $("runMeta").textContent = meta;
+    $("runSteps").innerHTML = steps.map(function (s) {
+      var sym = s.state === "ok" ? "✓" : s.state === "bad" ? "✗" : s.state === "run" ? "●" : "○";
+      return '<li><span class="si ' + s.state + '">' + sym + '</span><span>' + esc(s.name) + '</span></li>';
+    }).join("");
+    $("runActions").innerHTML = actionsHtml || ""; $("runMsg").innerHTML = messageHtml || "";
+  }
+  function watch(id) {
+    S.runId = id; lsSet("cf.run", String(id));
+    clearTimeout(S.timer); clearInterval(S.ticker);
+    showRun(); poll();
+  }
+  async function poll() {
+    var id = S.runId; if (!id) return;
+    try {
+      var rr = await gh("/repos/" + S.repo + "/actions/runs/" + id);
+      if (!rr.ok) { setRun("bad", "Can't read this run", "", [], "", '<div class="msg bad">' + explain(rr, "the run") + "</div>"); return; }
+      var run = await rr.json();
+      var jr = await gh("/repos/" + S.repo + "/actions/runs/" + id + "/jobs");
+      var job = jr.ok ? ((await jr.json()).jobs || [])[0] : null;
+      var steps = ((job && job.steps) || []).filter(function (s) {
+        return !/^(Set up job|Complete job|Post |Run actions\/)/.test(s.name);
+      }).map(function (s) {
+        var st = s.status === "completed" ? (s.conclusion === "success" || s.conclusion === "skipped" ? "ok" : "bad") : s.status === "in_progress" ? "run" : "wait";
+        return { name: FRIENDLY[s.name] || s.name, state: st };
+      });
+      var started = new Date(run.run_started_at || run.created_at).getTime();
+      var runUrl = run.html_url;
+      var link = '<a class="btnlink" href="' + esc(runUrl) + '" target="_blank" rel="noopener">Open on GitHub</a>';
+      if (run.status !== "completed") {
+        var waiting = run.status === "queued" || run.status === "waiting" || run.status === "pending";
+        var tick = function () { $("runMeta").textContent = (waiting ? "Waiting for a free GitHub machine · " : "Working · ") + fmtDur(Date.now() - started) + " elapsed"; };
+        setRun("run", waiting ? "Waiting to start" : "Making your reels", "", steps, link, "");
+        tick(); S.ticker = setInterval(tick, 1000);
+        S.timer = setTimeout(poll, 8000);
+      } else if (run.conclusion === "success") {
+        var dur = fmtDur(new Date(run.updated_at).getTime() - started);
+        setRun("ok", "Done. Your reels are ready", "Took " + dur, steps,
+          '<button class="primary" id="btnDl" type="button" style="margin-top:0;width:auto;padding:10px 18px">Download reels (.zip)</button>' + link, "");
+        $("btnDl").addEventListener("click", function () { download(id, runUrl); });
+        loadRecent();
+      } else {
+        var why = run.conclusion === "cancelled" ? "The run was cancelled." :
+          "Something failed. Open the run on GitHub, click the step with the red ✗, and send me the error text.";
+        setRun("bad", run.conclusion === "cancelled" ? "Cancelled" : "Failed", "", steps, link, '<div class="msg bad">' + why + "</div>");
+        loadRecent();
+      }
+    } catch (e) {
+      S.timer = setTimeout(poll, 10000);
+      $("runMsg").innerHTML = '<div class="msg warn">Lost connection for a moment. Retrying…</div>';
+    }
+  }
+  async function download(id, runUrl) {
+    var b = $("btnDl"); var label = b.textContent; b.disabled = true; b.textContent = "Fetching…";
+    try {
+      var a = await gh("/repos/" + S.repo + "/actions/runs/" + id + "/artifacts");
+      var list = a.ok ? ((await a.json()).artifacts || []).filter(function (x) { return !x.expired; }) : [];
+      if (!list.length) { msg($("runMsg"), "warn", "No download found for this run. It may have expired (kept 7 days)."); return; }
+      var z = await gh("/repos/" + S.repo + "/actions/artifacts/" + list[0].id + "/zip");
+      if (!z.ok) throw new Error("zip " + z.status);
+      var blob = await z.blob();
+      var u = URL.createObjectURL(blob); var el = document.createElement("a");
+      el.href = u; el.download = list[0].name + ".zip"; document.body.appendChild(el); el.click(); el.remove();
+      setTimeout(function () { URL.revokeObjectURL(u); }, 60000);
+      msg($("runMsg"), "good", "Downloaded <b>" + esc(list[0].name) + ".zip</b>. Unzip it: the reels and <code>titles_*.csv</code> are inside.");
+    } catch (e) {
+      msg($("runMsg"), "warn", "Your browser blocked the direct download. Open the run on GitHub, scroll to <b>Artifacts</b> at the bottom, and click the zip: <a href=\"" + esc(runUrl) + "\" target=\"_blank\" rel=\"noopener\">open run page</a>.");
+    } finally { b.disabled = false; b.textContent = label; }
+  }
+
+  /* ---------- recent runs ---------- */
+  async function loadRecent() {
+    var ul = $("recent");
+    try {
+      var r = await gh("/repos/" + S.repo + "/actions/workflows/" + WORKFLOW + "/runs?per_page=6");
+      if (!r.ok) { ul.innerHTML = '<li class="empty">Couldn\'t load runs.</li>'; return; }
+      var runs = (await r.json()).workflow_runs || [];
+      if (!runs.length) { ul.innerHTML = '<li class="empty">No runs yet. Your first one will show here.</li>'; return; }
+      ul.innerHTML = runs.map(function (x) {
+        var kind = x.status !== "completed" ? "run" : x.conclusion === "success" ? "ok" : "bad";
+        var word = x.status !== "completed" ? "Running" : x.conclusion === "success" ? "Done" : x.conclusion === "cancelled" ? "Cancelled" : "Failed";
+        return '<li><span class="dot ' + kind + '"></span><span class="grow">Run #' + x.run_number + " · " + word + " · " + ago(x.created_at) +
+          '</span><button class="small" type="button" data-run="' + x.id + '">View</button></li>';
+      }).join("");
+      Array.prototype.forEach.call(ul.querySelectorAll("button[data-run]"), function (b) {
+        b.addEventListener("click", function () { watch(Number(b.getAttribute("data-run"))); window.scrollTo(0, 0); });
+      });
+    } catch (e) { ul.innerHTML = '<li class="empty">Couldn\'t load runs.</li>'; }
+  }
+
+  /* ---------- remember the form ---------- */
+  function saveForm() {
+    lsSet("cf.form", JSON.stringify({ url: $("url").value, channel: val("channel"), count: val("count"), template: $("template").value, req: $("req").value }));
+  }
+  function loadForm() {
+    var f; try { f = JSON.parse(lsGet("cf.form") || "null"); } catch (e) { f = null; }
+    if (!f) return;
+    $("url").value = f.url || ""; $("req").value = f.req || "";
+    if (f.template) $("template").value = f.template;
+    ["channel", "count"].forEach(function (n) {
+      var el = document.querySelector('input[name="' + n + '"][value="' + f[n] + '"]'); if (el) el.checked = true;
+    });
+  }
+
+  /* ---------- wire up ---------- */
+  $("btnGo").addEventListener("click", start);
+  $("btnSave").addEventListener("click", function () { connect(true); });
+  $("btnSettings").addEventListener("click", function () { showSetup($("setup").classList.contains("hidden")); });
+  $("btnForget").addEventListener("click", function () {
+    lsDel("cf.token"); S.token = ""; clearTimeout(S.timer); clearInterval(S.ticker);
+    setConnected(""); msg($("setupMsg"), "good", "Key removed from this browser."); showSetup(true);
+    $("recent").innerHTML = '<li class="empty">Connect to see your runs.</li>';
+  });
+  document.querySelectorAll("#formCard input, #formCard select").forEach(function (el) { el.addEventListener("change", saveForm); });
+
+  loadForm();
+  var savedRepo = lsGet("cf.repo"), savedTok = lsGet("cf.token");
+  if (savedRepo) $("repo").value = savedRepo;
+  if (savedTok) {
+    S.token = savedTok; S.repo = savedRepo || $("repo").value;
+    connect(false).then(function (ok) {
+      if (!ok) showSetup(true);
+      else { var rid = Number(lsGet("cf.run") || 0); if (rid) watch(rid); }
+    });
+  } else { showSetup(true); }
+})();
+</script>
+</body>
+</html>

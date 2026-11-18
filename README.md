@@ -38,7 +38,15 @@ If a provider fails or runs out of free quota, the next one takes over, and a pr
 The run page shows **"Who did the work"**, and `ai_usage.json` in the download has the details.
 Change models with secrets such as `GROQ_MODEL`, `CEREBRAS_MODEL`, `MISTRAL_MODEL`, `OPENROUTER_MODEL`, `GEMINI_MODEL` if a provider retires one.
 
-## Make reels
+## Easy mode: the control page (recommended)
+
+`docs/index.html` is a small web page: paste the video link, pick channel / reels / style, press **Make reels**, watch live progress, download the zip.
+
+1. Repo → **Settings** → **Pages** → Source **Deploy from a branch** → Branch **main**, folder **/docs** → **Save**.
+2. After about a minute it is live at `https://<your-username>.github.io/Clip-factory/` (works on a phone too).
+3. First visit: create a GitHub key that can only run this repo's workflow (the page shows the 5 steps) and paste it once. It is stored only in that browser.
+
+## Make reels (the manual way, in GitHub)
 
 1. Repo → **Actions** → **Make clips** → **Run workflow**
 2. Fill in:
