@@ -48,6 +48,25 @@ def call_gemini(prompt, key, model):
             raise RuntimeError(f"Gemini HTTP {e.code}: {msg}")
     raise RuntimeError("Gemini retries exhausted")
 
+def call_groq(prompt, key, model):
+    """Backup brain: Groq free tier, OpenAI-compatible chat API."""
+    body = json.dumps({"model": model, "temperature": 0.3, "response_format": {"type": "json_object"},
+                       "messages": [{"role": "user", "content": prompt +
+                                     '\nWrap the array as {"moments": [...]}.'}]}).encode()
+    for attempt in range(3):
+        req = urllib.request.Request("https://api.groq.com/openai/v1/chat/completions", data=body,
+                                     headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}",
+                                              "User-Agent": "clip-factory"})
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:
+                return json.load(r)["choices"][0]["message"]["content"]
+        except urllib.error.HTTPError as e:
+            msg = e.read().decode()[:300]
+            if e.code in (429, 500, 503) and attempt < 2:
+                time.sleep(20 * (attempt + 1)); continue
+            raise RuntimeError(f"Groq HTTP {e.code}: {msg}")
+    raise RuntimeError("Groq retries exhausted")
+
 def snap(words, s, e):
     """Snap a start/end to word boundaries."""
     ws = [w for w in words if w["e"] > s - 0.05 and w["s"] < e + 0.05]
@@ -58,10 +77,15 @@ def clean_hook(h):
     h = re.sub(r"[^\w$?!',.%: -]", "", h or "").strip()
     return " ".join(h.split()[:9])
 
-def gemini_pick(words, count, mn, mx, key, model):
+def build_prompt(words, count, mn, mx, templates, limit):
     tr = "\n".join(lines(words))
-    if len(tr) > 400_000: tr = tr[:400_000]
-    prompt = f"""{RUBRIC}
+    if len(tr) > limit: tr = tr[:limit]
+    tpl = ""
+    if templates:
+        tpl = ("\nAlso choose the best editing template for each moment from this list (use the exact name):\n" +
+               "\n".join(f"- {k}: {v}" for k, v in templates.items()) +
+               '\nAdd it to each item as "template": string.\n')
+    return f"""{RUBRIC}{tpl}
 Pick the {count} best NON-OVERLAPPING moments. Rules:
 - Each moment is between {mn} and {mx} seconds long.
 - Start at the beginning of a sentence/line, end right after the payoff (never mid-sentence).
@@ -74,7 +98,10 @@ Return ONLY a JSON array, best first, each item exactly:
 TRANSCRIPT (format: [seconds] text):
 {tr}
 """
-    txt = call_gemini(prompt, key, model)
+
+def parse(txt):
+    txt = txt.strip()
+    if txt.startswith("```"): txt = txt.strip("`").split("\n", 1)[1].rsplit("```", 1)[0]
     arr = json.loads(txt)
     if isinstance(arr, dict): arr = arr.get("moments") or arr.get("clips") or []
     return arr
@@ -107,7 +134,7 @@ def heuristic_pick(words, count, mn, mx):
         cands.append({"start": s, "end": last["e"], "score": sc, "hook": hook, "reason": "keyword heuristic"})
     return sorted(cands, key=lambda c: -c["score"])
 
-def finalize(moments, words, count, mn, mx):
+def finalize(moments, words, count, mn, mx, templates=None):
     out = []
     for m in moments:
         try: s, e = float(m["start"]), float(m["end"])
@@ -118,8 +145,10 @@ def finalize(moments, words, count, mn, mx):
         if not sn: continue
         s, e = sn
         if any(not (e <= o["start"] or s >= o["end"]) for o in out): continue
-        out.append({"start": s, "end": e, "score": round(float(m.get("score", 0)), 2),
-                    "hook": clean_hook(m.get("hook")), "reason": m.get("reason", "")})
+        item = {"start": s, "end": e, "score": round(float(m.get("score", 0)), 2),
+                "hook": clean_hook(m.get("hook")), "reason": m.get("reason", "")}
+        if templates and m.get("template") in templates: item["template"] = m["template"]
+        out.append(item)
         if len(out) >= count: break
     return out
 
@@ -128,19 +157,28 @@ def main():
     ap.add_argument("words"); ap.add_argument("out")
     ap.add_argument("--count", type=int, default=5)
     ap.add_argument("--min", type=float, default=15); ap.add_argument("--max", type=float, default=45)
+    ap.add_argument("--templates", default="", help="JSON {name: description} the AI may choose from per moment")
     a = ap.parse_args()
     words = json.load(open(a.words))
-    key = os.environ.get("GEMINI_API_KEY", "").strip()
-    model = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
+    templates = json.loads(a.templates) if a.templates else None
     moments, how = [], "heuristic"
-    if key:
+    # brain 1: Gemini (Google AI Studio)   brain 2: Groq   brain 3: free keyword heuristic
+    brains = []
+    if os.environ.get("GEMINI_API_KEY", "").strip():
+        m = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
+        brains.append((f"gemini:{m}", lambda p: call_gemini(p, os.environ["GEMINI_API_KEY"].strip(), m), 400_000))
+    if os.environ.get("GROQ_API_KEY", "").strip():
+        m2 = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+        brains.append((f"groq:{m2}", lambda p: call_groq(p, os.environ["GROQ_API_KEY"].strip(), m2), 24_000))
+    if not brains:
+        print("NOTE: no AI key set, using the free keyword heuristic.", file=sys.stderr)
+    for name, fn, limit in brains:
         try:
-            moments = finalize(gemini_pick(words, a.count + 3, a.min, a.max, key, model), words, a.count, a.min, a.max)
-            how = f"gemini:{model}"
+            raw = parse(fn(build_prompt(words, a.count + 3, a.min, a.max, templates, limit)))
+            moments = finalize(raw, words, a.count, a.min, a.max, templates)
+            if moments: how = name; break
         except Exception as ex:
-            print("WARNING: Gemini failed, using free heuristic instead ->", ex, file=sys.stderr)
-    else:
-        print("NOTE: no GEMINI_API_KEY set, using the free keyword heuristic.", file=sys.stderr)
+            print(f"WARNING: {name} failed, trying the next option ->", ex, file=sys.stderr)
     if not moments:
         moments = finalize(heuristic_pick(words, a.count, a.min, a.max), words, a.count, a.min, a.max); how = "heuristic"
     for i, m in enumerate(moments, 1): m["name"] = f"clip{i:02d}"

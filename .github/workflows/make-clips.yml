@@ -17,13 +17,14 @@ on:
         options: [channel1, channel2, channel3]
         default: channel1
       template:
-        description: "Editing template (auto = the channel's default)"
+        description: "Editing template (auto = AI picks the best one for each clip)"
         type: choice
-        options: [auto, gta_moment, gta_react, gta_list, stream_clutch, stream_funny, video_story, video_talk]
+        options: [auto, gta_moment, gta_react, gta_list, gta_chase, gta_heist, gta_fail, gta_cinematic, stream_clutch, stream_funny, video_story, video_talk]
         default: auto
       count:
-        description: "How many clips"
-        required: false
+        description: "How many reels from this video"
+        type: choice
+        options: ["5", "6", "7"]
         default: "5"
       required_text:
         description: "Campaign text for descriptions, e.g. @brand #ad (optional)"
@@ -76,6 +77,7 @@ jobs:
       - name: Make the clips
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
           python clipkit/run_pipeline.py \
             --source "$SRC" \
@@ -92,7 +94,7 @@ jobs:
           if [ -f out/moments.json ]; then python - <<'EOF' >> $GITHUB_STEP_SUMMARY
           import json
           for m in json.load(open("out/moments.json")):
-              print(f"- **{m['name']}** ({m['start']}s to {m['end']}s) score {m['score']}: {m['hook']} - {m['reason']}")
+              print(f"- **{m['name']}** `{m.get('template','')}` ({m['start']}s to {m['end']}s) score {m['score']}: {m['hook']} - {m['reason']}")
           EOF
           fi
 

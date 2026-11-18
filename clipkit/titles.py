@@ -37,8 +37,10 @@ def main():
     rows = []
     for c in clips:
         ws = clip_text(words, c["start"], c["end"]); sents = sentences(ws)
-        if not sents: continue
-        best = max(sents, key=score); hook = clean(c.get("hook") or best)
+        if not sents and not c.get("hook"): continue
+        best = max(sents, key=score) if sents else ""
+        hook = clean(c.get("hook") or best)
+        if hook.isupper(): hook = hook.capitalize()
         if len(hook) > 70: hook = hook[:67].rsplit(" ", 1)[0] + "…"
         pat = rng.choice(t["title_patterns"]); emoji = rng.choice(cfg["emoji"]); cta = rng.choice(cfg["cta"])
         title = pat.format(hook=hook)

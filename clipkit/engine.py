@@ -58,6 +58,26 @@ def main():
     W = json.load(open(job["words"])) if job.get("words") else []
     segs = [{"speed": 1.0, "freeze": 0, "freeze_text": "", **s} for s in job["segments"]]
 
+    # ---- 0. template-driven structure (only when the job gives one plain segment)
+    if len(segs) == 1 and not job.get("raw_segments"):
+        s0 = dict(segs[0]); L0 = s0["e"] - s0["s"]
+        if T.get("speed_ramp") and L0 > 12:            # fast build-up, real-time finish
+            cut = s0["s"] + L0 * 0.6
+            segs = [{**s0, "e": cut, "speed": T["speed_ramp"]}, {**s0, "s": cut}]
+        elif T.get("auto_freeze") and L0 > 10:          # freeze + "WAIT FOR IT" right before the payoff
+            cut = s0["e"] - min(4.0, L0 * 0.25)
+            segs = [{**s0, "e": cut, "freeze": T["auto_freeze"], "freeze_text": T.get("freeze_text", "WAIT...")},
+                    {**s0, "s": cut, "freeze": 0, "freeze_text": ""}]
+        if T.get("auto_replay"):                        # slow-mo replay of the payoff
+            last = segs[-1]; r = min(T["auto_replay"], last["e"] - last["s"])
+            segs.append({"s": last["e"] - r, "e": last["e"], "speed": 0.5, "freeze": 0, "freeze_text": "",
+                         "nocap": True, "replay": True})
+    if T.get("auto_stakes") and not job.get("stakes"):  # big $ number said in the clip -> counter
+        lo, hi = segs[0]["s"], segs[-1]["e"]
+        for w in W:
+            if lo <= w["s"] <= hi and re.search(r"\$\s?\d", w["w"]):
+                job["stakes"] = re.sub(r"[^\d$,]", "", w["w"]); break
+
     # ---- 1. render segments (speed / freeze) to uniform 1920x1080 intermediates
     offs, off, parts = [], 0.0, []
     for i, s in enumerate(segs):
@@ -88,6 +108,7 @@ def main():
     # ---- 2. caption words on output timeline
     words = []
     for s, o in zip(segs, offs):
+        if s.get("nocap"): continue
         ws = [dict(w) for w in W if w["s"] >= s["s"] - 0.02 and w["e"] <= s["e"] + 0.05]
         m = []
         for w in ws:
@@ -156,6 +177,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             ft = o + (s["e"] - s["s"]) / s["speed"]
             add(ft, ft + s["freeze"], "Wait", 540, 960, s["freeze_text"] or "WAIT...", POP, 4)
             sfx.append(("hit", ft, 0.8))
+    for s, o in zip(segs, offs):
+        if s.get("replay"):
+            add(o, min(o + 1.6, total), "Box", 540, T.get("label_y", 560), "SLOW-MO REPLAY", "\\fad(60,200)" + POP, 4)
+            sfx.append(("whoosh", max(0, o - 0.15), 0.8))
     if not job.get("no_captions"):
         groups, cur = [], []
         for w in words:
@@ -208,6 +233,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 f"[top][bot]vstack,drawbox=x=0:y={th-3}:w=1080:h=6:color=#{ch['hl']}:t=fill[base]")
     # ---- 5. zoom / shake
     zt = [f"{T['zoom']}*min(1,max(0,(it-{t-0.05:.2f})/0.1))*between(it,{t-0.05:.2f},{t+0.9:.2f})" for t in emph[:14]] if T["zoom"] else []
+    if T.get("push"): zt.append(f"{T['push']}*it/{total:.2f}")   # slow cinematic push-in
     sh = [f"16*sin(it*90)*between(it,{t:.2f},{t+0.28:.2f})" for t in shakes[:10]]
     zb = 1.04 if sh else 1.0
     if zt or sh:
@@ -217,7 +243,32 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         mot = f"[base]zoompan=z='{Z}':x='max(0,min(iw-iw/zoom,{X}))':y='max(0,min(ih-ih/zoom,{Y}))':d=1:s=1080x1920:fps=30[mv]"
     else:
         mot = "[base]null[mv]"
-    vchain = f"{base};{mot};[mv]ass={ass}:fontsdir={FONTDIRS}[vout]"
+    # ---- 5b. look: colour grade, vignette, letterbox, flashes, progress bar
+    GRADES = {
+        "punchy":      "eq=contrast=1.12:saturation=1.3:gamma=0.97,unsharp=5:5:0.6",
+        "teal_orange": "colorbalance=rs=-0.05:bs=0.08:rh=0.08:bh=-0.08,eq=contrast=1.1:saturation=1.15",
+        "warm":        "colorbalance=rm=0.06:bm=-0.05:rh=0.05,eq=saturation=1.2:contrast=1.06",
+        "neon":        "eq=saturation=1.45:contrast=1.08,colorbalance=rs=0.05:bs=0.08",
+    }
+    look = []
+    if T.get("grade") in GRADES: look.append(GRADES[T["grade"]])
+    if T.get("vignette"): look.append("vignette=PI/5")
+    if T.get("letterbox"):
+        look.append("drawbox=x=0:y=0:w=iw:h=150:color=black:t=fill,drawbox=x=0:y=ih-150:w=iw:h=150:color=black:t=fill")
+    if T.get("flash") == "police":
+        for t in shakes[:10]:
+            look.append(f"drawbox=x=0:y=0:w=iw:h=ih:color=red@0.25:t=fill:enable='between(t,{t:.2f},{t+0.12:.2f})'")
+            look.append(f"drawbox=x=0:y=0:w=iw:h=ih:color=blue@0.25:t=fill:enable='between(t,{t+0.12:.2f},{t+0.24:.2f})'")
+    elif T.get("flash") == "white":
+        for t in (shakes or emph)[:10]:
+            look.append(f"drawbox=x=0:y=0:w=iw:h=ih:color=white@0.35:t=fill:enable='between(t,{t:.2f},{t+0.07:.2f})'")
+    lk = ("," + ",".join(look)) if look else ""
+    vchain = f"{base};{mot};[mv]format=yuv420p{lk},ass={ass}:fontsdir={FONTDIRS}"
+    if T.get("progress"):
+        vchain += (f"[cap];color=c=0x{ch['hl']}:s=1080x12:r=30[pb];"
+                   f"[cap][pb]overlay=x='-w+w*t/{total:.3f}':y=0:shortest=1[vout]")
+    else:
+        vchain += "[vout]"
 
     # ---- 6. audio: voice + sfx (+ music)
     if T.get("sfx_cut"):
