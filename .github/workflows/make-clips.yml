@@ -1,0 +1,107 @@
+name: Make clips
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_url:
+        description: "Video link (direct .mp4 link or Google Drive share link). Leave empty if you uploaded a file to input/"
+        required: false
+        default: ""
+      source_file:
+        description: "File name inside the input/ folder (e.g. game.mp4). Used only if the link is empty"
+        required: false
+        default: ""
+      channel:
+        description: "Which channel the clips are for"
+        type: choice
+        options: [channel1, channel2, channel3]
+        default: channel1
+      template:
+        description: "Editing template (auto = the channel's default)"
+        type: choice
+        options: [auto, gta_moment, gta_react, gta_list, stream_clutch, stream_funny, video_story, video_talk]
+        default: auto
+      count:
+        description: "How many clips"
+        required: false
+        default: "5"
+      required_text:
+        description: "Campaign text for descriptions, e.g. @brand #ad (optional)"
+        required: false
+        default: ""
+
+jobs:
+  clips:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install ffmpeg and fonts
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg fonts-inter
+          sudo mkdir -p /usr/share/fonts/truetype/poppins
+          for w in Bold Black; do
+            sudo curl -fsSL -o /usr/share/fonts/truetype/poppins/Poppins-$w.ttf \
+              https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-$w.ttf || true
+          done
+          sudo fc-cache -f
+
+      - name: Install Python packages
+        run: pip install -r requirements.txt
+
+      - name: Get the source video
+        run: |
+          mkdir -p input
+          if [ -n "${{ inputs.source_url }}" ]; then
+            URL="${{ inputs.source_url }}"
+            if echo "$URL" | grep -q "drive.google.com"; then
+              gdown --fuzzy "$URL" -O input/source.mp4
+            else
+              curl -fL --retry 3 -o input/source.mp4 "$URL"
+            fi
+            echo "SRC=input/source.mp4" >> $GITHUB_ENV
+          elif [ -n "${{ inputs.source_file }}" ]; then
+            echo "SRC=input/${{ inputs.source_file }}" >> $GITHUB_ENV
+          else
+            echo "Give either a video link or a file name in input/"; exit 1
+          fi
+
+      - name: Make the clips
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python clipkit/run_pipeline.py \
+            --source "$SRC" \
+            --channel "${{ inputs.channel }}" \
+            --template "${{ inputs.template }}" \
+            --count "${{ inputs.count }}" \
+            --required "${{ inputs.required_text }}" \
+            --out out
+
+      - name: Show summary
+        if: always()
+        run: |
+          echo "### Clips" >> $GITHUB_STEP_SUMMARY
+          if [ -f out/moments.json ]; then python - <<'EOF' >> $GITHUB_STEP_SUMMARY
+          import json
+          for m in json.load(open("out/moments.json")):
+              print(f"- **{m['name']}** ({m['start']}s to {m['end']}s) score {m['score']}: {m['hook']} - {m['reason']}")
+          EOF
+          fi
+
+      - name: Upload clips
+        uses: actions/upload-artifact@v4
+        with:
+          name: clips-${{ inputs.channel }}
+          path: |
+            out/clips/*.mp4
+            out/titles_*.csv
+            out/moments.json
+          retention-days: 7

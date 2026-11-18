@@ -1,0 +1,7 @@
+out/
+input/*
+!input/.gitkeep
+clipkit/sfx/
+__pycache__/
+*.pyc
+.env

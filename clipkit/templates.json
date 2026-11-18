@@ -1,0 +1,29 @@
+{
+  "_groups": {
+    "gta": ["gta_moment", "gta_react", "gta_list"],
+    "stream": ["stream_clutch", "stream_funny"],
+    "video": ["video_story", "video_talk"],
+    "_daily": "gta 2+2+3, stream 2+3, video 1+2 = 15"
+  },
+  "gta_moment":   {"desc": "Full-screen gameplay moment: speed ramps, punch zooms, shake + hit on impacts, whoosh on cuts",
+                   "layout": "full", "hook_y": 330, "cap_y": 1460, "cap_size": 86, "words_per": 2,
+                   "zoom": 0.14, "shake": true, "sfx_cut": "whoosh", "sfx_emph": "hit", "riser_before_last": true},
+  "gta_react":    {"desc": "Facecam top / gameplay bottom, reaction-first hook",
+                   "layout": "split", "top_h": 720, "hook_y": 860, "cap_y": 1500, "cap_size": 80, "words_per": 3,
+                   "zoom": 0.08, "shake": false, "sfx_cut": "whoosh", "sfx_emph": null},
+  "gta_list":     {"desc": "Listicle / hidden details: big numbers, freeze frame + WAIT, pop sounds",
+                   "layout": "blur", "hook_y": 300, "cap_y": 1480, "cap_size": 78, "words_per": 3, "label_y": 560,
+                   "zoom": 0.06, "shake": false, "sfx_cut": "whoosh", "sfx_emph": null},
+  "stream_clutch":{"desc": "Big play: facecam split, zoom + shake on the reaction, hit SFX",
+                   "layout": "split", "top_h": 760, "hook_y": 900, "cap_y": 1520, "cap_size": 82, "words_per": 2,
+                   "zoom": 0.12, "shake": true, "sfx_cut": "whoosh", "sfx_emph": "hit"},
+  "stream_funny": {"desc": "Funny moment / comms: context card, chat pop-ups, pop SFX",
+                   "layout": "split", "top_h": 760, "hook_y": 900, "cap_y": 1520, "cap_size": 78, "words_per": 3, "label_y": 1180,
+                   "zoom": 0.06, "shake": false, "sfx_cut": null, "sfx_emph": null},
+  "video_story":  {"desc": "YouTube story payoff: blurred fill, stakes counter, payoff-first",
+                   "layout": "blur", "hook_y": 380, "cap_y": 1470, "cap_size": 84, "words_per": 3,
+                   "zoom": 0.0, "shake": false, "sfx_cut": "whoosh", "sfx_emph": null},
+  "video_talk":   {"desc": "Talking head: face-centred full crop, big centre captions, punch-ins",
+                   "layout": "full_face", "hook_y": 300, "cap_y": 1300, "cap_size": 96, "words_per": 2,
+                   "zoom": 0.10, "shake": false, "sfx_cut": null, "sfx_emph": null}
+}

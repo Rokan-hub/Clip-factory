@@ -1,0 +1,26 @@
+{
+ "channel1": {
+  "name": "Channel 1",
+  "tone": "hype",
+  "emoji": ["🔥", "😳", "💀"],
+  "base_tags": ["#shorts"],
+  "cta": ["Follow for more", "Part 2?", "Would you do this?"],
+  "style": {"font": "Poppins", "hl": "FFD400", "box": "FFD400", "box_fg": "000000"}
+ },
+ "channel2": {
+  "name": "Channel 2",
+  "tone": "curious",
+  "emoji": ["👀", "🤯", "😮"],
+  "base_tags": ["#shorts"],
+  "cta": ["Comment your take", "Follow for daily clips", "Agree or nah?"],
+  "style": {"font": "Inter Black", "hl": "39FF14", "box": "39FF14", "box_fg": "000000"}
+ },
+ "channel3": {
+  "name": "Channel 3",
+  "tone": "story",
+  "emoji": ["🎬", "😱", "🫣"],
+  "base_tags": ["#shorts"],
+  "cta": ["Subscribe for more", "Which part was best?", "Share with a friend"],
+  "style": {"font": "Inter Display Black", "hl": "FF3B5C", "box": "FFFFFF", "box_fg": "000000"}
+ }
+}

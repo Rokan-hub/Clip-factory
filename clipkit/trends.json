@@ -1,0 +1,16 @@
+{
+  "updated": "2026-11-18",
+  "channels": {
+    "default": {
+      "hashtags_trending": ["#fyp", "#viral", "#trending", "#shorts", "#reels"],
+      "topics": ["MrBeast", "GTA 6", "money", "challenge"],
+      "title_patterns": [
+        "{hook} 😳",
+        "Nobody expected this… {hook}",
+        "{hook} (wait for it)",
+        "This is why people can't stop watching: {hook}",
+        "{hook} 💀"
+      ]
+    }
+  }
+}
