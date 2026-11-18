@@ -69,7 +69,9 @@ jobs:
               pip install -q --break-system-packages yt-dlp 2>/dev/null || pip install -q yt-dlp
               yt-dlp -f "bv*[height<=1080]+ba/b" --merge-output-format mp4 -o input/source.mp4 "$SOURCE_URL" || true
             elif echo "$SOURCE_URL" | grep -q "drive.google.com"; then
-              gdown --fuzzy "$SOURCE_URL" -O input/source.mp4 || true
+              ID=$(echo "$SOURCE_URL" | sed -nE 's#.*/d/([A-Za-z0-9_-]+).*#\1#p; s#.*[?&]id=([A-Za-z0-9_-]+).*#\1#p' | head -n1)
+              echo "Drive file id: $ID"
+              gdown "$ID" -O input/source.mp4 || gdown "https://drive.google.com/uc?id=$ID" -O input/source.mp4 || true
             else
               curl -fL --retry 3 -o input/source.mp4 "$SOURCE_URL" || true
             fi
