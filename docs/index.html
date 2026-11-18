@@ -5,89 +5,111 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Clip Factory</title>
 <style>
-/* Plan: one-screen control panel. Dark workshop palette with a single signal-yellow accent (matches channel 1). Left: the job form. Right: live run. */
+/* Plan: dark studio control room. Signal-yellow is the only accent. Left = the job, right = live status. Big tap targets, plain words. */
 :root {
-  --bg: #f4f4f1; --panel: #ffffff; --ink: #17181a; --muted: #62656b; --line: #dcdcd6;
-  --accent: #f5c400; --accent-ink: #1a1500; --good: #17803d; --bad: #c4261d; --warn: #9a6700; --field: #fbfbf9;
+  --bg:#0d0e10; --bg2:#121316; --panel:#16171b; --panel2:#1c1d22; --ink:#f1f1ee; --muted:#9a9ca4; --line:#2a2c32;
+  --accent:#f5c400; --accent-ink:#1a1500; --good:#3fcf72; --bad:#ff6b60; --warn:#e3b341; --field:#0f1013;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #0f1012; --panel: #17181b; --ink: #ececea; --muted: #9a9da4; --line: #2a2c31;
-    --accent: #f5c400; --accent-ink: #1a1500; --good: #3fcf72; --bad: #ff6b60; --warn: #e3b341; --field: #101114;
-  }
+:root[data-theme="light"] {
+  --bg:#f3f3ef; --bg2:#ecece7; --panel:#ffffff; --panel2:#f7f7f3; --ink:#17181a; --muted:#62656b; --line:#dcdcd6;
+  --accent:#f5c400; --accent-ink:#1a1500; --good:#17803d; --bad:#c4261d; --warn:#9a6700; --field:#fbfbf9;
 }
-:root[data-theme="dark"] {
-  --bg: #0f1012; --panel: #17181b; --ink: #ececea; --muted: #9a9da4; --line: #2a2c31;
-  --accent: #f5c400; --accent-ink: #1a1500; --good: #3fcf72; --bad: #ff6b60; --warn: #e3b341; --field: #101114;
-}
-* { box-sizing: border-box; }
-html, body { margin: 0; }
-body { background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color-scheme: light dark; }
-:root[data-theme="dark"] body { color-scheme: dark; }
-.wrap { max-width: 1040px; margin: 0 auto; padding: 20px 16px 48px; }
-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
-h1 { font-size: 20px; margin: 0; letter-spacing: .2px; display: flex; align-items: center; gap: 10px; }
-.mark { width: 14px; height: 26px; background: var(--accent); border-radius: 3px; display: inline-block; }
-.sub { color: var(--muted); font-size: 13px; }
-.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
-@media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
-.card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 14px; font-weight: 600; }
-label.lbl { display: block; font-weight: 600; margin: 14px 0 6px; }
-label.lbl:first-of-type { margin-top: 0; }
-.hint { color: var(--muted); font-size: 13px; margin-top: 4px; }
-input[type=text], input[type=password], select { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); font: inherit; }
-input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.seg { display: flex; gap: 6px; flex-wrap: wrap; }
-.seg input { position: absolute; opacity: 0; pointer-events: none; }
-.seg label { flex: 1 1 0; min-width: 84px; text-align: center; padding: 9px 8px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; background: var(--field); font-weight: 600; font-size: 14px; }
-.seg label small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
-.seg input:checked + label { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
-.seg input:checked + label small { color: var(--accent-ink); opacity: .75; }
-.seg input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 2px; }
-button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line); background: var(--field); color: var(--ink); padding: 9px 14px; }
-button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; padding: 13px 16px; width: 100%; font-size: 16px; margin-top: 18px; }
-button.primary:disabled { opacity: .5; cursor: not-allowed; }
-button.small { padding: 6px 10px; font-size: 13px; }
-a.btnlink { display: inline-block; text-decoration: none; border: 1px solid var(--line); background: var(--field); color: var(--ink); border-radius: 8px; padding: 10px 14px; }
-a { color: inherit; }
-.status { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; }
-.dot { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); flex: none; }
-.dot.run { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
-.dot.ok { background: var(--good); } .dot.bad { background: var(--bad); }
-@keyframes pulse { 50% { opacity: .35; } }
-@media (prefers-reduced-motion: reduce) { .dot.run { animation: none; } }
-.meta { color: var(--muted); font-size: 13px; margin: 4px 0 14px; font-variant-numeric: tabular-nums; }
-ol.steps { list-style: none; padding: 0; margin: 0 0 14px; }
-ol.steps li { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; border-bottom: 1px dashed var(--line); }
-ol.steps li:last-child { border-bottom: 0; }
-.si { width: 18px; text-align: center; flex: none; font-weight: 700; }
-.si.ok { color: var(--good); } .si.bad { color: var(--bad); } .si.run { color: var(--accent); } .si.wait { color: var(--muted); }
-.msg { padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--field); margin: 10px 0; font-size: 14px; }
-.msg.bad { border-color: var(--bad); } .msg.good { border-color: var(--good); } .msg.warn { border-color: var(--warn); }
-.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-.empty { color: var(--muted); padding: 22px 4px; text-align: center; }
-.runs { list-style: none; margin: 0; padding: 0; }
-.runs li { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
-.runs li:last-child { border-bottom: 0; }
-.runs .grow { flex: 1; min-width: 0; }
-.setup ol { padding-left: 20px; margin: 8px 0 14px; }
-.setup li { margin: 6px 0; }
-code { background: var(--field); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; font-size: 13px; }
-.hidden { display: none !important; }
+* { box-sizing:border-box; }
+html,body { margin:0; }
+body { background:radial-gradient(1200px 500px at 15% -10%, rgba(245,196,0,.07), transparent 60%), var(--bg); color:var(--ink);
+  font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; min-height:100vh; }
+.wrap { max-width:1080px; margin:0 auto; padding:22px 16px 56px; }
+header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:22px; }
+.brand { display:flex; align-items:center; gap:12px; }
+.logo { width:40px; height:40px; border-radius:11px; background:var(--accent); display:grid; place-items:center; flex:none; }
+.logo svg { width:22px; height:22px; }
+h1 { font-size:21px; margin:0; letter-spacing:.2px; line-height:1.1; }
+.sub { color:var(--muted); font-size:13px; margin-top:2px; display:flex; align-items:center; gap:6px; }
+.pip { width:8px; height:8px; border-radius:50%; background:var(--muted); display:inline-block; }
+.pip.on { background:var(--good); box-shadow:0 0 0 3px rgba(63,207,114,.18); }
+.grid { display:grid; grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr); gap:18px; align-items:start; }
+@media (max-width:820px) { .grid { grid-template-columns:1fr; } }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:20px; }
+.card h2 { font-size:12px; text-transform:uppercase; letter-spacing:.12em; color:var(--muted); margin:0 0 16px; font-weight:700; display:flex; align-items:center; justify-content:space-between; }
+.field { margin-top:18px; } .field:first-of-type { margin-top:0; }
+label.lbl { display:block; font-weight:650; margin:0 0 7px; font-size:14px; }
+.hint { color:var(--muted); font-size:13px; margin-top:6px; }
+input[type=text],input[type=password],select { width:100%; padding:12px 13px; border:1px solid var(--line); border-radius:11px; background:var(--field); color:var(--ink); font:inherit; }
+input[type=text]:focus,input[type=password]:focus,select:focus { border-color:var(--accent); outline:none; box-shadow:0 0 0 3px rgba(245,196,0,.18); }
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.linkrow { display:flex; gap:8px; }
+.linkrow input { flex:1; min-width:0; }
+.chip { display:none; margin-top:8px; padding:8px 11px; border-radius:10px; font-size:13px; border:1px solid var(--line); background:var(--panel2); }
+.chip.show { display:block; }
+.chip.good { border-color:var(--good); } .chip.bad { border-color:var(--bad); } .chip.warn { border-color:var(--warn); }
+.tiles { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.tiles input,.seg input { position:absolute; opacity:0; pointer-events:none; }
+.tile { display:block; padding:12px 10px; border:1px solid var(--line); border-radius:12px; background:var(--field); cursor:pointer; text-align:left; transition:border-color .15s, transform .1s; }
+.tile b { display:block; font-size:14px; }
+.tile span { display:block; color:var(--muted); font-size:12px; margin-top:1px; }
+.tile:hover { border-color:#4a4d55; }
+.tiles input:checked + .tile { border-color:var(--accent); background:rgba(245,196,0,.10); box-shadow:inset 0 0 0 1px var(--accent); }
+.tiles input:checked + .tile b { color:var(--accent); }
+:root[data-theme="light"] .tiles input:checked + .tile b { color:#7a5d00; }
+.seg { display:flex; gap:8px; }
+.seg label { flex:1; text-align:center; padding:11px 8px; border:1px solid var(--line); border-radius:12px; cursor:pointer; background:var(--field); font-weight:700; }
+.seg input:checked + label { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+.tiles input:focus-visible + .tile,.seg input:focus-visible + label { outline:2px solid var(--accent); outline-offset:2px; }
+button { font:inherit; cursor:pointer; border-radius:11px; border:1px solid var(--line); background:var(--panel2); color:var(--ink); padding:10px 14px; transition:border-color .15s; }
+button:hover:not(:disabled) { border-color:#4a4d55; }
+button:disabled { opacity:.55; cursor:not-allowed; }
+button.primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:800; padding:15px 16px; width:100%; font-size:16px; margin-top:22px; letter-spacing:.2px; }
+button.primary:hover:not(:disabled) { filter:brightness(1.06); border-color:var(--accent); }
+button.small { padding:7px 11px; font-size:13px; }
+button.danger { color:var(--bad); border-color:rgba(255,107,96,.45); }
+a.btnlink { display:inline-block; text-decoration:none; border:1px solid var(--line); background:var(--panel2); color:var(--ink); border-radius:11px; padding:10px 14px; font-size:14px; }
+a { color:inherit; }
+.status { display:flex; align-items:center; gap:10px; font-weight:800; font-size:19px; }
+.dot { width:12px; height:12px; border-radius:50%; background:var(--muted); flex:none; }
+.dot.run { background:var(--accent); animation:pulse 1.2s ease-in-out infinite; }
+.dot.ok { background:var(--good); } .dot.bad { background:var(--bad); }
+@keyframes pulse { 50% { opacity:.3; } }
+@media (prefers-reduced-motion:reduce) { .dot.run { animation:none; } }
+.meta { color:var(--muted); font-size:13px; margin:5px 0 14px; font-variant-numeric:tabular-nums; }
+.bar { height:8px; border-radius:99px; background:var(--field); border:1px solid var(--line); overflow:hidden; margin-bottom:16px; }
+.bar > i { display:block; height:100%; width:0; background:var(--accent); border-radius:99px; transition:width .5s ease; }
+.bar.ok > i { background:var(--good); } .bar.bad > i { background:var(--bad); }
+ol.steps { list-style:none; padding:0; margin:0 0 14px; }
+ol.steps li { display:flex; gap:12px; align-items:center; padding:8px 0; color:var(--muted); font-size:14px; }
+ol.steps li.ok,ol.steps li.run,ol.steps li.bad { color:var(--ink); }
+.si { width:22px; height:22px; border-radius:50%; display:grid; place-items:center; flex:none; font-size:12px; font-weight:800; border:1.5px solid var(--line); }
+.si.ok { background:var(--good); border-color:var(--good); color:#06260f; }
+.si.bad { background:var(--bad); border-color:var(--bad); color:#2a0805; }
+.si.run { border-color:var(--accent); color:var(--accent); }
+.msg { padding:11px 13px; border-radius:11px; border:1px solid var(--line); background:var(--panel2); margin:10px 0; font-size:14px; }
+.msg.bad { border-color:var(--bad); } .msg.good { border-color:var(--good); } .msg.warn { border-color:var(--warn); }
+.row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.empty { color:var(--muted); padding:26px 6px; text-align:center; }
+.runs { list-style:none; margin:0; padding:0; }
+.runs li { display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line); font-size:14px; }
+.runs li:last-child { border-bottom:0; }
+.runs .grow { flex:1; min-width:0; }
+.runs .when { color:var(--muted); font-size:12px; }
+.setup ol { padding-left:20px; margin:8px 0 14px; } .setup li { margin:7px 0; }
+code { background:var(--field); border:1px solid var(--line); border-radius:6px; padding:1px 6px; font-size:13px; }
+.hidden { display:none !important; }
+.stack { display:flex; flex-direction:column; gap:18px; min-width:0; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <div>
-      <h1><span class="mark"></span>Clip Factory</h1>
-      <div class="sub" id="who">Not connected</div>
+    <div class="brand">
+      <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#1a1500" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M10.5 9.5l4 2.5-4 2.5z" fill="#1a1500"/></svg></div>
+      <div>
+        <h1>Clip Factory</h1>
+        <div class="sub"><span class="pip" id="pip"></span><span id="who">Not connected</span></div>
+      </div>
     </div>
     <button class="small" id="btnSettings" type="button">Settings</button>
   </header>
 
-  <section class="card setup hidden" id="setup" style="margin-bottom:16px">
+  <section class="card setup hidden" id="setup" style="margin-bottom:18px">
     <h2>One-time setup (2 minutes)</h2>
     <p style="margin-top:0">This page needs a key that lets it press the "Run" button on your GitHub repo for you. The key stays in this browser only.</p>
     <ol>
@@ -97,12 +119,12 @@ code { background: var(--field); border: 1px solid var(--line); border-radius: 5
       <li>Click <b>Add permissions</b> (or open <b>Repository permissions</b>) and set <b>Actions</b> to <b>Read and write</b>. Leave everything else.</li>
       <li>Click <b>Generate token</b> and copy it (it starts with <code>github_pat_</code>).</li>
     </ol>
-    <label class="lbl" for="repo">Your repo</label>
-    <input type="text" id="repo" value="Rokan-hub/Clip-factory" autocomplete="off" spellcheck="false">
-    <label class="lbl" for="token">Paste the key here</label>
-    <input type="password" id="token" placeholder="github_pat_..." autocomplete="off" spellcheck="false">
-    <div class="row" style="margin-top:12px">
-      <button class="primary" id="btnSave" type="button" style="margin-top:0;width:auto;padding:10px 18px">Save and test</button>
+    <div class="field"><label class="lbl" for="repo">Your repo</label>
+    <input type="text" id="repo" value="Rokan-hub/Clip-factory" autocomplete="off" spellcheck="false"></div>
+    <div class="field"><label class="lbl" for="token">Paste the key here</label>
+    <input type="password" id="token" placeholder="github_pat_..." autocomplete="off" spellcheck="false"></div>
+    <div class="row" style="margin-top:14px">
+      <button class="primary" id="btnSave" type="button" style="margin-top:0;width:auto;padding:11px 20px;font-size:15px">Save and test</button>
       <button class="small hidden" id="btnForget" type="button">Forget key</button>
     </div>
     <div id="setupMsg"></div>
@@ -111,74 +133,89 @@ code { background: var(--field); border: 1px solid var(--line); border-radius: 5
   <div class="grid">
     <section class="card" id="formCard">
       <h2>New job</h2>
-      <label class="lbl" for="url">Video link</label>
-      <input type="text" id="url" placeholder="https://drive.google.com/file/d/..." autocomplete="off" spellcheck="false">
-      <div class="hint">Best: Google Drive link (Share, then "Anyone with the link") or a direct .mp4 link. YouTube links may be blocked.</div>
 
-      <label class="lbl">Channel</label>
-      <div class="seg" id="segChannel">
-        <input type="radio" name="channel" id="ch1" value="channel1" checked><label for="ch1">Channel 1<small>GTA 6</small></label>
-        <input type="radio" name="channel" id="ch2" value="channel2"><label for="ch2">Channel 2<small>Stream</small></label>
-        <input type="radio" name="channel" id="ch3" value="channel3"><label for="ch3">Channel 3<small>Video</small></label>
+      <div class="field">
+        <label class="lbl" for="url">Video link</label>
+        <div class="linkrow">
+          <input type="text" id="url" placeholder="Paste your Google Drive link" autocomplete="off" spellcheck="false">
+          <button type="button" class="small" id="btnPaste">Paste</button>
+        </div>
+        <div class="chip" id="urlChip"></div>
+        <div class="hint" id="urlHint">Use a Google Drive link set to "Anyone with the link", or a direct .mp4 link.</div>
       </div>
 
-      <label class="lbl">Reels from this video</label>
-      <div class="seg" id="segCount">
-        <input type="radio" name="count" id="c5" value="5" checked><label for="c5">5</label>
-        <input type="radio" name="count" id="c6" value="6"><label for="c6">6</label>
-        <input type="radio" name="count" id="c7" value="7"><label for="c7">7</label>
+      <div class="field">
+        <label class="lbl">Channel</label>
+        <div class="tiles" id="segChannel">
+          <input type="radio" name="channel" id="ch1" value="channel1"><label class="tile" for="ch1"><b>Channel 1</b><span>GTA 6</span></label>
+          <input type="radio" name="channel" id="ch2" value="channel2"><label class="tile" for="ch2"><b>Channel 2</b><span>Stream</span></label>
+          <input type="radio" name="channel" id="ch3" value="channel3" checked><label class="tile" for="ch3"><b>Channel 3</b><span>Video</span></label>
+        </div>
       </div>
 
-      <label class="lbl" for="template">Style</label>
-      <select id="template">
-        <option value="auto">Auto: AI picks the best style for each clip</option>
-        <optgroup label="GTA 6">
-          <option value="gta_moment">gta_moment: big gameplay moment</option>
-          <option value="gta_react">gta_react: facecam + gameplay</option>
-          <option value="gta_list">gta_list: hidden details, lists</option>
-          <option value="gta_chase">gta_chase: police chase</option>
-          <option value="gta_heist">gta_heist: heist, big money</option>
-          <option value="gta_fail">gta_fail: fails, glitches</option>
-          <option value="gta_cinematic">gta_cinematic: graphics, scenery</option>
-        </optgroup>
-        <optgroup label="Stream">
-          <option value="stream_clutch">stream_clutch: big plays</option>
-          <option value="stream_funny">stream_funny: funny moments</option>
-        </optgroup>
-        <optgroup label="Video">
-          <option value="video_story">video_story: story payoff</option>
-          <option value="video_talk">video_talk: talking head</option>
-        </optgroup>
-      </select>
+      <div class="field">
+        <label class="lbl">How many reels</label>
+        <div class="seg" id="segCount">
+          <input type="radio" name="count" id="c5" value="5" checked><label for="c5">5</label>
+          <input type="radio" name="count" id="c6" value="6"><label for="c6">6</label>
+          <input type="radio" name="count" id="c7" value="7"><label for="c7">7</label>
+        </div>
+      </div>
 
-      <label class="lbl" for="req">Campaign text <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
-      <input type="text" id="req" placeholder="@brand #ad" autocomplete="off" spellcheck="false">
-      <div class="hint">Goes into every description.</div>
+      <div class="field">
+        <label class="lbl" for="template">Style</label>
+        <select id="template">
+          <option value="auto">Auto: AI picks the best style for each clip</option>
+          <optgroup label="GTA 6">
+            <option value="gta_moment">gta_moment: big gameplay moment</option>
+            <option value="gta_react">gta_react: facecam + gameplay</option>
+            <option value="gta_list">gta_list: hidden details, lists</option>
+            <option value="gta_chase">gta_chase: police chase</option>
+            <option value="gta_heist">gta_heist: heist, big money</option>
+            <option value="gta_fail">gta_fail: fails, glitches</option>
+            <option value="gta_cinematic">gta_cinematic: graphics, scenery</option>
+          </optgroup>
+          <optgroup label="Stream">
+            <option value="stream_clutch">stream_clutch: big plays</option>
+            <option value="stream_funny">stream_funny: funny moments</option>
+          </optgroup>
+          <optgroup label="Video">
+            <option value="video_story">video_story: story payoff</option>
+            <option value="video_talk">video_talk: talking head</option>
+          </optgroup>
+        </select>
+      </div>
+
+      <div class="field">
+        <label class="lbl" for="req">Campaign text <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
+        <input type="text" id="req" placeholder="@brand #ad" autocomplete="off" spellcheck="false">
+        <div class="hint">Goes into every description.</div>
+      </div>
 
       <button class="primary" id="btnGo" type="button">Make reels</button>
       <div id="formMsg"></div>
     </section>
 
-    <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
+    <div class="stack">
       <section class="card" id="runCard">
         <h2>Current run</h2>
-        <div id="runEmpty" class="empty">Nothing running. Fill in the form and press <b>Make reels</b>.</div>
+        <div id="runEmpty" class="empty">Nothing running.<br>Paste a link and press <b>Make reels</b>.</div>
         <div id="runBody" class="hidden">
           <div class="status"><span class="dot" id="runDot"></span><span id="runTitle">Starting</span></div>
           <div class="meta" id="runMeta"></div>
+          <div class="bar" id="runBar"><i id="runBarFill"></i></div>
           <ol class="steps" id="runSteps"></ol>
           <div id="runMsg"></div>
           <div class="row" id="runActions"></div>
         </div>
       </section>
       <section class="card">
-        <h2>Recent runs</h2>
+        <h2>Recent runs <button class="small" id="btnRefresh" type="button">Refresh</button></h2>
         <ul class="runs" id="recent"><li class="empty">Connect to see your runs.</li></ul>
       </section>
     </div>
   </div>
 </div>
-
 <script>
 "use strict";
 (function () {
@@ -222,6 +259,7 @@ code { background: var(--field); border: 1px solid var(--line); border-radius: 5
   }
   function setConnected(login) {
     $("who").textContent = login ? "Connected as " + login + " · " + S.repo : "Not connected";
+    $("pip").className = "pip" + (login ? " on" : "");
   }
   async function connect(save) {
     var repo = $("repo").value.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\/+$/, "");
@@ -301,21 +339,33 @@ code { background: var(--field); border: 1px solid var(--line); border-radius: 5
     "Upload clips": "Packing the download"
   };
   function showRun() { $("runEmpty").classList.add("hidden"); $("runBody").classList.remove("hidden"); }
+  function stopTicker() { clearInterval(S.ticker); S.ticker = null; }
   function setRun(kind, title, meta, steps, actionsHtml, messageHtml) {
     $("runDot").className = "dot " + kind; $("runTitle").textContent = title; $("runMeta").textContent = meta;
+    var total = steps.length || 1, done = steps.filter(function (s) { return s.state === "ok"; }).length;
+    var pct = kind === "ok" ? 100 : Math.round(done / total * 100);
+    $("runBar").className = "bar " + (kind === "ok" ? "ok" : kind === "bad" ? "bad" : "");
+    $("runBarFill").style.width = pct + "%";
     $("runSteps").innerHTML = steps.map(function (s) {
-      var sym = s.state === "ok" ? "✓" : s.state === "bad" ? "✗" : s.state === "run" ? "●" : "○";
-      return '<li><span class="si ' + s.state + '">' + sym + '</span><span>' + esc(s.name) + '</span></li>';
+      var sym = s.state === "ok" ? "✓" : s.state === "bad" ? "✕" : s.state === "run" ? "•" : "";
+      return '<li class="' + s.state + '"><span class="si ' + s.state + '">' + sym + '</span><span>' + esc(s.name) + '</span></li>';
     }).join("");
     $("runActions").innerHTML = actionsHtml || ""; $("runMsg").innerHTML = messageHtml || "";
   }
+  var ADVICE = {
+    "Get the source video": "Your video link didn't give a real video. Open the Drive file, press Share, set <b>Anyone with the link</b> (Viewer), and test the link in a private window. YouTube links usually don't work.",
+    "Check the video is real": "Your video link didn't give a real video. Open the Drive file, press Share, set <b>Anyone with the link</b> (Viewer), and test the link in a private window. YouTube links usually don't work.",
+    "Install ffmpeg and fonts": "GitHub had a hiccup while setting up. Press <b>Make reels</b> again.",
+    "Install Python packages": "GitHub had a hiccup while setting up. Press <b>Make reels</b> again."
+  };
   function watch(id) {
     S.runId = id; lsSet("cf.run", String(id));
-    clearTimeout(S.timer); clearInterval(S.ticker);
+    clearTimeout(S.timer); stopTicker();
     showRun(); poll();
   }
   async function poll() {
     var id = S.runId; if (!id) return;
+    clearTimeout(S.timer); stopTicker();
     try {
       var rr = await gh("/repos/" + S.repo + "/actions/runs/" + id);
       if (!rr.ok) { setRun("bad", "Can't read this run", "", [], "", '<div class="msg bad">' + explain(rr, "the run") + "</div>"); return; }
@@ -325,8 +375,8 @@ code { background: var(--field); border: 1px solid var(--line); border-radius: 5
       var steps = ((job && job.steps) || []).filter(function (s) {
         return !/^(Set up job|Complete job|Post |Run actions\/)/.test(s.name);
       }).map(function (s) {
-        var st = s.status === "completed" ? (s.conclusion === "success" || s.conclusion === "skipped" ? "ok" : "bad") : s.status === "in_progress" ? "run" : "wait";
-        return { name: FRIENDLY[s.name] || s.name, state: st };
+        var st = s.status === "completed" ? (s.conclusion === "success" ? "ok" : s.conclusion === "skipped" ? "wait" : "bad") : s.status === "in_progress" ? "run" : "wait";
+        return { name: FRIENDLY[s.name] || s.name, raw: s.name, state: st };
       });
       var started = new Date(run.run_started_at || run.created_at).getTime();
       var runUrl = run.html_url;
@@ -334,7 +384,9 @@ code { background: var(--field); border: 1px solid var(--line); border-radius: 5
       if (run.status !== "completed") {
         var waiting = run.status === "queued" || run.status === "waiting" || run.status === "pending";
         var tick = function () { $("runMeta").textContent = (waiting ? "Waiting for a free GitHub machine · " : "Working · ") + fmtDur(Date.now() - started) + " elapsed"; };
-        setRun("run", waiting ? "Waiting to start" : "Making your reels", "", steps, link, "");
+        setRun("run", waiting ? "Waiting to start" : "Making your reels", "", steps,
+          '<button class="danger" id="btnCancel" type="button">Cancel run</button>' + link, "");
+        $("btnCancel").addEventListener("click", function () { cancelRun(id); });
         tick(); S.ticker = setInterval(tick, 1000);
         S.timer = setTimeout(poll, 8000);
       } else if (run.conclusion === "success") {
@@ -344,15 +396,37 @@ code { background: var(--field); border: 1px solid var(--line); border-radius: 5
         $("btnDl").addEventListener("click", function () { download(id, runUrl); });
         loadRecent();
       } else {
-        var why = run.conclusion === "cancelled" ? "The run was cancelled." :
-          "Something failed. Open the run on GitHub, click the step with the red ✗, and send me the error text.";
-        setRun("bad", run.conclusion === "cancelled" ? "Cancelled" : "Failed", "", steps, link, '<div class="msg bad">' + why + "</div>");
+        var bad = steps.filter(function (s) { return s.state === "bad"; })[0];
+        var cancelled = run.conclusion === "cancelled";
+        var took = fmtDur(new Date(run.updated_at).getTime() - started);
+        var why = cancelled ? "The run was cancelled."
+          : (bad && ADVICE[bad.raw]) ? ADVICE[bad.raw]
+          : "Something failed" + (bad ? " at <b>" + esc(bad.name) + "</b>" : "") + ". Open the run on GitHub, click the step with the red ✕, and send me the error text.";
+        setRun("bad", cancelled ? "Cancelled" : "Failed", "Stopped after " + took, steps, link, '<div class="msg bad">' + why + "</div>");
         loadRecent();
       }
     } catch (e) {
       S.timer = setTimeout(poll, 10000);
       $("runMsg").innerHTML = '<div class="msg warn">Lost connection for a moment. Retrying…</div>';
     }
+  }
+  async function cancelRun(id) {
+    var b = $("btnCancel"); if (b) { b.disabled = true; b.textContent = "Cancelling…"; }
+    try {
+      var r = await gh("/repos/" + S.repo + "/actions/runs/" + id + "/cancel", { method: "POST" });
+      if (r.status !== 202 && r.status !== 409) { msg($("runMsg"), "bad", explain(r, "cancelling")); if (b) { b.disabled = false; b.textContent = "Cancel run"; } return; }
+    } catch (e) { msg($("runMsg"), "bad", "Couldn't reach GitHub."); return; }
+    clearTimeout(S.timer); S.timer = setTimeout(poll, 2500);
+  }
+  function checkUrl() {
+    var v = $("url").value.trim(), c = $("urlChip");
+    if (!v) { c.className = "chip"; c.innerHTML = ""; return; }
+    var kind, html;
+    if (!/^https?:\/\/\S+$/.test(v)) { kind = "bad"; html = "That doesn't look like a link. It should start with <code>https://</code>."; }
+    else if (/youtube\.com|youtu\.be/.test(v)) { kind = "warn"; html = "YouTube links usually fail (YouTube blocks GitHub). Upload the video to Google Drive and paste that link instead."; }
+    else if (/drive\.google\.com|docs\.google\.com/.test(v)) { kind = "good"; html = "Google Drive link. Make sure it's shared as <b>Anyone with the link</b>."; }
+    else { kind = "good"; html = "Direct link. It must end up at the video file itself (like .mp4)."; }
+    c.className = "chip show " + kind; c.innerHTML = html;
   }
   async function download(id, runUrl) {
     var b = $("btnDl"); var label = b.textContent; b.disabled = true; b.textContent = "Fetching…";
@@ -383,7 +457,7 @@ code { background: var(--field); border: 1px solid var(--line); border-radius: 5
       ul.innerHTML = runs.map(function (x) {
         var kind = x.status !== "completed" ? "run" : x.conclusion === "success" ? "ok" : "bad";
         var word = x.status !== "completed" ? "Running" : x.conclusion === "success" ? "Done" : x.conclusion === "cancelled" ? "Cancelled" : "Failed";
-        return '<li><span class="dot ' + kind + '"></span><span class="grow">Run #' + x.run_number + " · " + word + " · " + ago(x.created_at) +
+        return '<li><span class="dot ' + kind + '"></span><span class="grow"><b>Run #' + x.run_number + "</b> · " + word + ' <span class="when">· ' + ago(x.created_at) + '</span>' +
           '</span><button class="small" type="button" data-run="' + x.id + '">View</button></li>';
       }).join("");
       Array.prototype.forEach.call(ul.querySelectorAll("button[data-run]"), function (b) {
@@ -408,16 +482,22 @@ code { background: var(--field); border: 1px solid var(--line); border-radius: 5
 
   /* ---------- wire up ---------- */
   $("btnGo").addEventListener("click", start);
+  $("url").addEventListener("input", checkUrl);
+  $("btnPaste").addEventListener("click", async function () {
+    try { var t = await navigator.clipboard.readText(); $("url").value = (t || "").trim(); checkUrl(); saveForm(); }
+    catch (e) { $("url").focus(); msg($("formMsg"), "warn", "Your browser blocked paste. Click the box and press Ctrl+V."); }
+  });
+  $("btnRefresh").addEventListener("click", function () { if (S.token) loadRecent(); });
   $("btnSave").addEventListener("click", function () { connect(true); });
   $("btnSettings").addEventListener("click", function () { showSetup($("setup").classList.contains("hidden")); });
   $("btnForget").addEventListener("click", function () {
-    lsDel("cf.token"); S.token = ""; clearTimeout(S.timer); clearInterval(S.ticker);
+    lsDel("cf.token"); S.token = ""; clearTimeout(S.timer); stopTicker();
     setConnected(""); msg($("setupMsg"), "good", "Key removed from this browser."); showSetup(true);
     $("recent").innerHTML = '<li class="empty">Connect to see your runs.</li>';
   });
   document.querySelectorAll("#formCard input, #formCard select").forEach(function (el) { el.addEventListener("change", saveForm); });
 
-  loadForm();
+  loadForm(); checkUrl();
   var savedRepo = lsGet("cf.repo"), savedTok = lsGet("cf.token");
   if (savedRepo) $("repo").value = savedRepo;
   if (savedTok) {
