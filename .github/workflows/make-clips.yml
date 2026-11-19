@@ -131,14 +131,76 @@ jobs:
           EOF
           fi
 
-      - name: Upload clips
+      - name: Upload titles and info
         uses: actions/upload-artifact@v4
         with:
-          name: clips-${{ inputs.channel }}
+          name: info-${{ inputs.channel }}
           path: |
-            out/clips/*.mp4
             out/titles_*.csv
             out/titles_*.docx
             out/moments.json
             out/ai_usage.json
+          retention-days: 7
+
+      - name: Upload reel 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: reel-01-${{ inputs.channel }}
+          path: out/clips/clip01_*.mp4
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload reel 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: reel-02-${{ inputs.channel }}
+          path: out/clips/clip02_*.mp4
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload reel 03
+        uses: actions/upload-artifact@v4
+        with:
+          name: reel-03-${{ inputs.channel }}
+          path: out/clips/clip03_*.mp4
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload reel 04
+        uses: actions/upload-artifact@v4
+        with:
+          name: reel-04-${{ inputs.channel }}
+          path: out/clips/clip04_*.mp4
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload reel 05
+        uses: actions/upload-artifact@v4
+        with:
+          name: reel-05-${{ inputs.channel }}
+          path: out/clips/clip05_*.mp4
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload reel 06
+        uses: actions/upload-artifact@v4
+        with:
+          name: reel-06-${{ inputs.channel }}
+          path: out/clips/clip06_*.mp4
+          compression-level: 0
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload reel 07
+        uses: actions/upload-artifact@v4
+        with:
+          name: reel-07-${{ inputs.channel }}
+          path: out/clips/clip07_*.mp4
+          compression-level: 0
+          if-no-files-found: ignore
           retention-days: 7

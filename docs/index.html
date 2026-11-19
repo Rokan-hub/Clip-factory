@@ -94,6 +94,8 @@ ol.steps li.ok,ol.steps li.run,ol.steps li.bad { color:var(--ink); }
 code { background:var(--field); border:1px solid var(--line); border-radius:6px; padding:1px 6px; font-size:13px; }
 .res { display:flex; gap:14px; padding:14px 0; border-bottom:1px solid var(--line); }
 .res:last-child { border-bottom:0; }
+.thumb { width:64px; height:96px; border-radius:10px; background:var(--field); border:1px solid var(--line); display:grid; place-items:center; font-weight:800; font-size:22px; color:var(--accent); flex:none; }
+.vid video { width:100%; max-width:240px; border-radius:10px; margin-top:10px; background:#000; }
 .res video { width:96px; height:170px; object-fit:cover; border-radius:10px; background:#000; flex:none; }
 .res .body { flex:1; min-width:0; }
 .res h3 { margin:0 0 6px; font-size:15px; }
@@ -352,7 +354,7 @@ button.copied { border-color:var(--good); color:var(--good); }
     "Get the source video": "Downloading your video",
     "Make the clips": "Transcribing, picking moments, editing reels",
     "Show summary": "Writing the summary",
-    "Upload clips": "Packing the download"
+    "Upload titles and info": "Packing the download"
   };
   function showRun() { $("runEmpty").classList.add("hidden"); $("runBody").classList.remove("hidden"); }
   function stopTicker() { clearInterval(S.ticker); S.ticker = null; }
@@ -390,7 +392,7 @@ button.copied { border-color:var(--good); color:var(--good); }
       var jr = await gh("/repos/" + S.repo + "/actions/runs/" + id + "/jobs");
       var job = jr.ok ? ((await jr.json()).jobs || [])[0] : null;
       var steps = ((job && job.steps) || []).filter(function (s) {
-        return !/^(Set up job|Complete job|Post |Run actions\/)/.test(s.name);
+        return !/^(Set up job|Complete job|Post |Run actions\/|Upload reel)/.test(s.name);
       }).map(function (s) {
         var st = s.status === "completed" ? (s.conclusion === "success" ? "ok" : s.conclusion === "skipped" ? "wait" : "bad") : s.status === "in_progress" ? "run" : "wait";
         return { name: FRIENDLY[s.name] || s.name, raw: s.name, state: st };
@@ -495,6 +497,58 @@ button.copied { border-color:var(--good); color:var(--good); }
   }
   function fallbackCopy(text) { var t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select(); try { document.execCommand("copy"); } catch (e) {} t.remove(); }
   var RES = { urls: [] };
+  async function fetchArtifact(art) {
+    var z = await gh("/repos/" + S.repo + "/actions/artifacts/" + art.id + "/zip");
+    if (!z.ok) throw new Error("zip " + z.status);
+    var zb = await z.blob(), buf = await zb.arrayBuffer();
+    return { buf: buf, entries: readZip(buf), blob: zb };
+  }
+  function mb(n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; }
+  async function loadResultsNew(id, runUrl, list) {
+    var base = function (n) { return n.split("/").pop(); };
+    var info = {}, infoArt = list.filter(function (x) { return /^info-/.test(x.name); })[0], docBlob = null, docName = "titles.docx";
+    if (infoArt) {
+      try {
+        var pk = await fetchArtifact(infoArt);
+        var csvE = pk.entries.filter(function (e) { return /\.csv$/i.test(e.name); })[0];
+        var docE = pk.entries.filter(function (e) { return /\.docx$/i.test(e.name); })[0];
+        if (csvE) parseCsv(await (await extract(pk.buf, csvE, "text/csv")).text()).slice(1).forEach(function (r) { if (r[0]) info[r[0].slice(0, 6)] = { t: r[1] || "", d: r[2] || "", i: r[3] || "" }; });
+        if (docE) { docBlob = await extract(pk.buf, docE, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"); docName = base(docE.name); }
+      } catch (e) {}
+    }
+    var reels = list.filter(function (x) { return /^reel-\d+/.test(x.name); }).sort(function (a, b) { return a.name < b.name ? -1 : 1; });
+    var top = $("resTop"); top.innerHTML = "";
+    var mk = function (label, cls, fn) { var b = document.createElement("button"); b.type = "button"; b.textContent = label; if (cls) b.className = cls; b.addEventListener("click", function () { fn(b); }); top.appendChild(b); return b; };
+    if (docBlob) { var wb = mk("Download Word file (titles + descriptions)", "primary", function () { saveBlob(docBlob, docName); }); wb.style.cssText = "margin-top:0;width:auto;padding:11px 16px;font-size:14px"; }
+    var box = $("resList"); box.innerHTML = "";
+    var getters = [];
+    reels.forEach(function (art) {
+      var num = art.name.match(/^reel-(\d+)/)[1], key = "clip" + num, meta = info[key] || {};
+      var cache = null, getVideo = async function () {
+        if (cache) return cache;
+        var pk = await fetchArtifact(art), e = pk.entries.filter(function (x) { return /\.mp4$/i.test(x.name); })[0];
+        if (!e) throw new Error("no mp4");
+        cache = { blob: await extract(pk.buf, e, "video/mp4"), name: base(e.name) }; return cache;
+      };
+      getters.push(function () { return getVideo().then(function (v) { saveBlob(v.blob, v.name); }); });
+      var div = document.createElement("div"); div.className = "res";
+      div.innerHTML = '<div class="thumb" aria-hidden="true">' + esc(num) + '</div><div class="body"><h3>Reel ' + esc(num) + ' <span style="color:var(--muted);font-weight:400;font-size:13px">· ' + mb(art.size_in_bytes || 0) + '</span></h3>' +
+        (meta.t ? '<p class="t"><b>Title:</b> ' + esc(meta.t) + '</p>' : '') + '<div class="row"></div><div class="vid"></div></div>';
+      var row = div.querySelector(".row"), vid = div.querySelector(".vid");
+      var add = function (label, fn) { var b = document.createElement("button"); b.type = "button"; b.className = "small"; b.textContent = label; b.addEventListener("click", function () { fn(b); }); row.appendChild(b); return b; };
+      add("Download", async function (b) { var l = b.textContent; b.disabled = true; b.textContent = "Getting…"; try { var v = await getVideo(); saveBlob(v.blob, v.name); b.textContent = "Saved"; } catch (e) { b.textContent = "Failed, retry"; } b.disabled = false; setTimeout(function () { b.textContent = l; }, 2500); });
+      add("Play", async function (b) { if (vid.firstChild) { vid.innerHTML = ""; b.textContent = "Play"; return; } b.disabled = true; b.textContent = "Loading…";
+        try { var v = await getVideo(), u = URL.createObjectURL(v.blob); RES.urls.push(u); vid.innerHTML = '<video src="' + u + '" controls playsinline autoplay></video>'; b.textContent = "Hide"; } catch (e) { b.textContent = "Failed, retry"; } b.disabled = false; });
+      if (meta.t) add("Copy title", function (b) { copyText(b, meta.t); });
+      if (meta.d) add("Copy YouTube text", function (b) { copyText(b, meta.d); });
+      if (meta.i) add("Copy Instagram text", function (b) { copyText(b, meta.i); });
+      box.appendChild(div);
+    });
+    if (reels.length > 1) mk("Download all reels", "", async function (b) { var l = b.textContent; b.disabled = true;
+      try { for (var i = 0; i < getters.length; i++) { b.textContent = "Downloading " + (i + 1) + " of " + getters.length + "…"; await getters[i](); await sleep(600); } b.textContent = "All saved"; } catch (e) { b.textContent = "Failed, retry"; }
+      b.disabled = false; setTimeout(function () { b.textContent = l; }, 3000); });
+    if (!reels.length) box.innerHTML = '<div class="msg warn">The run finished but no reels were found.</div>';
+  }
   async function loadResults(id, runUrl, zipBlobPromise) {
     var card = $("resCard"); card.classList.remove("hidden");
     $("resTop").innerHTML = ""; $("resList").innerHTML = '<div class="empty">Opening your reels…</div>';
@@ -503,6 +557,7 @@ button.copied { border-color:var(--good); color:var(--good); }
       var a = await gh("/repos/" + S.repo + "/actions/runs/" + id + "/artifacts");
       var list = a.ok ? ((await a.json()).artifacts || []).filter(function (x) { return !x.expired; }) : [];
       if (!list.length) { $("resList").innerHTML = '<div class="msg warn">No download found for this run. It may have expired (kept 7 days).</div>'; return; }
+      if (list.some(function (x) { return /^reel-\d+/.test(x.name); })) { $("resList").innerHTML = ""; await loadResultsNew(id, runUrl, list); return; }
       var z = await gh("/repos/" + S.repo + "/actions/artifacts/" + list[0].id + "/zip");
       if (!z.ok) throw new Error("zip " + z.status);
       var zipBlob = await z.blob(), buf = await zipBlob.arrayBuffer(), entries = readZip(buf);
