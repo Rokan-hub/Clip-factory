@@ -63,6 +63,7 @@ main { max-width:1060px; margin:0 auto; padding:22px 18px 60px; }
 /* ---- content ---- */
 .pageHead { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; }
 .pageHead h1 { margin:0; font-size:22px; }
+.homeWrap { max-width:640px; margin:0 auto; }
 .grid { display:grid; grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr); gap:18px; align-items:start; }
 @media (max-width:980px) { .grid { grid-template-columns:1fr; } }
 .stack { display:flex; flex-direction:column; gap:18px; min-width:0; }
@@ -197,7 +198,7 @@ code { background:var(--field); border:1px solid var(--line); border-radius:6px;
           <div id="setupMsg"></div>
         </section>
 
-        <div class="grid">
+        <div class="homeWrap">
           <section class="card" id="formCard">
             <h2>New job</h2>
             <div class="field">
@@ -257,13 +258,6 @@ code { background:var(--field); border:1px solid var(--line); border-radius:6px;
             <div id="formMsg"></div>
           </section>
 
-          <div class="stack">
-            <div id="homeNote"></div>
-            <section class="card">
-              <h2><span>Latest reels</span><span id="homeRunTag" style="text-transform:none;letter-spacing:0;font-weight:600"></span></h2>
-              <div id="homeReels"><div class="empty">Connect to see your reels.</div></div>
-            </section>
-          </div>
         </div>
       </section>
 
@@ -301,7 +295,7 @@ code { background:var(--field); border:1px solid var(--line); border-radius:6px;
   var KEEP_DAYS = 7;
   var $ = function (id) { return document.getElementById(id); };
   var S = { repo: "", token: "", branch: "main", view: "home", runs: [], selRun: null, detailGen: 0, ticker: null, runsTimer: null,
-            homeRunId: null, started: null, histOpen: null, sel: {} };
+            histOpen: null, sel: {} };
 
   /* ---------- storage ---------- */
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -564,7 +558,7 @@ code { background:var(--field); border:1px solid var(--line); border-radius:6px;
   };
 
   /* ---------- runs: one list kept fresh, used by Home / Run / History ---------- */
-  var homePanel = new Panel($("homeReels")), detailPanel = null, histPanel = null;
+  var detailPanel = null, histPanel = null;
   async function refreshRuns() {
     if (!S.token) return;
     clearTimeout(S.runsTimer);
@@ -578,20 +572,6 @@ code { background:var(--field); border:1px solid var(--line); border-radius:6px;
   function onRuns() {
     var running = S.runs.filter(function (x) { return x.status !== "completed"; }).length;
     $("runBadge").textContent = running; $("runBadge").classList.toggle("hidden", !running);
-    // note on Home about the job you started
-    if (S.started) {
-      var st = S.runs.filter(function (x) { return x.id === S.started.id; })[0];
-      if (st) {
-        if (st.status !== "completed") $("homeNote").innerHTML = '<div class="msg warn">Run #' + st.run_number + ' is working. You can close this page: it keeps going. <button class="small" type="button" data-go="runs">Watch it</button></div>';
-        else if (st.conclusion === "success") { $("homeNote").innerHTML = '<div class="msg good">Run #' + st.run_number + ' is done. Your reels are below.</div>'; S.started = null; }
-        else { $("homeNote").innerHTML = '<div class="msg bad">Run #' + st.run_number + ' ' + runWord(st).toLowerCase() + '. <button class="small" type="button" data-go="runs">See why</button></div>'; S.started = null; }
-        var g = $("homeNote").querySelector("[data-go]"); if (g) g.addEventListener("click", function () { selectRun(S.started ? S.started.id : st.id); setView("runs"); });
-      }
-    }
-    // Home shows the newest successful run that still has files
-    var latest = S.runs.filter(function (x) { return x.conclusion === "success" && !isExpired(x); })[0];
-    if (!latest) { if (S.homeRunId !== -1) { S.homeRunId = -1; homePanel.clear(); $("homeReels").innerHTML = '<div class="empty">No finished runs yet. Make your first reels with the form.</div>'; $("homeRunTag").textContent = ""; } }
-    else if (latest.id !== S.homeRunId) { S.homeRunId = latest.id; $("homeRunTag").textContent = "Run #" + latest.run_number + " · " + ago(latest.created_at); homePanel.load(latest.id, latest.html_url); }
     if (S.view === "runs") renderRunList();
     if (S.view === "history") renderHistory();
   }
@@ -743,7 +723,7 @@ code { background:var(--field); border:1px solid var(--line); border-radius:6px;
         else { failed++; if (r.status === 403) denied = true; }
       } catch (e) { failed++; }
     }
-    gone.forEach(function (id) { delete S.sel[id]; S.runs = S.runs.filter(function (x) { return x.id !== id; }); if (S.histOpen === id) { S.histOpen = null; if (histPanel) histPanel.clear(); } if (S.homeRunId === id) S.homeRunId = null; });
+    gone.forEach(function (id) { delete S.sel[id]; S.runs = S.runs.filter(function (x) { return x.id !== id; }); if (S.histOpen === id) { S.histOpen = null; if (histPanel) histPanel.clear(); } });
     $("selAll").disabled = false; $("histList").removeAttribute("data-sig");
     $("delConfirm").innerHTML = '<div class="msg ' + (failed ? "warn" : "good") + '">Deleted ' + gone.length + (gone.length === 1 ? " run" : " runs") + '.' +
       (failed ? " " + failed + " couldn't be deleted" + (denied ? ": your key needs <b>Actions: Read and write</b> to delete." : ".") : "") + '</div>';
@@ -785,8 +765,8 @@ code { background:var(--field); border:1px solid var(--line); border-radius:6px;
       }
       if (!run) { msg($("formMsg"), "warn", "GitHub accepted the job, but it hasn't shown up yet. Open the <b>Run</b> tab in a minute."); refreshRuns(); return; }
       metaSet(run.id, { url: url, channel: inputs.channel, count: inputs.count });
-      S.started = { id: run.id };
-      msg($("formMsg"), "good", "Started Run #" + run.run_number + ". It keeps running even if you close this page.");
+      $("formMsg").innerHTML = '<div class="msg good">Started Run #' + run.run_number + '. It keeps running even if you close this page. <button class="small" type="button" id="goRun">Open Run</button></div>';
+      $("goRun").addEventListener("click", function () { selectRun(run.id); setView("runs"); });
       refreshRuns();
     } catch (e) {
       msg($("formMsg"), "bad", "Couldn't reach GitHub. Check your internet and try again.");
@@ -818,7 +798,6 @@ code { background:var(--field); border:1px solid var(--line); border-radius:6px;
   $("btnForget").addEventListener("click", function () {
     lsDel("cf.token"); S.token = ""; S.runs = []; clearTimeout(S.runsTimer); stopTicker();
     setConnected(""); msg($("setupMsg"), "good", "Key removed from this browser.");
-    $("homeReels").innerHTML = '<div class="empty">Connect to see your reels.</div>'; homePanel.clear(); S.homeRunId = null;
     renderRunList();
   });
   Array.prototype.forEach.call(document.querySelectorAll("#formCard input, #formCard select"), function (el) { el.addEventListener("change", saveForm); });
