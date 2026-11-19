@@ -131,6 +131,11 @@ ol.steps li.ok,ol.steps li.run,ol.steps li.bad { color:var(--ink); }
 .hHead { display:flex; align-items:center; gap:12px; }
 .hHead .grow { flex:1; min-width:0; }
 .hBody { margin-top:12px; }
+.hBar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:0 0 12px; border-bottom:1px solid var(--line); margin-bottom:4px; }
+.hBar label { display:flex; align-items:center; gap:8px; cursor:pointer; font-weight:650; font-size:14px; }
+input.chk { width:20px; height:20px; accent-color:var(--accent); flex:none; cursor:pointer; margin:0; }
+.hBar .sp { flex:1; }
+button.dangerSolid { background:var(--bad); border-color:var(--bad); color:#2a0805; font-weight:800; }
 .res { display:flex; gap:14px; padding:14px 0; border-bottom:1px solid var(--line); }
 .res:last-child { border-bottom:0; }
 .thumb { width:64px; height:96px; border-radius:10px; background:var(--field); border:1px solid var(--line); display:grid; place-items:center; font-weight:800; font-size:22px; color:var(--accent); flex:none; }
@@ -274,7 +279,14 @@ code { background:var(--field); border:1px solid var(--line); border-radius:6px;
       <!-- HISTORY -->
       <section id="v-history" class="hidden">
         <div class="pageHead"><h1>History</h1></div>
-        <section class="card"><h2>Finished runs <span style="text-transform:none;letter-spacing:0;font-weight:600">reels are kept 7 days</span></h2><div id="histList"><div class="empty">Connect to see your history.</div></div></section>
+        <section class="card"><h2>Finished runs <span style="text-transform:none;letter-spacing:0;font-weight:600">reels are kept 7 days</span></h2><div class="hBar hidden" id="histBar">
+          <label><input type="checkbox" class="chk" id="selAll"> Select all</label>
+          <span class="sp"></span>
+          <span id="selCount" style="color:var(--muted);font-size:13px"></span>
+          <button class="small danger" type="button" id="btnDel" disabled>Delete selected</button>
+        </div>
+        <div id="delConfirm"></div>
+        <div id="histList"><div class="empty">Connect to see your history.</div></div></section>
       </section>
 
     </main>
@@ -289,7 +301,7 @@ code { background:var(--field); border:1px solid var(--line); border-radius:6px;
   var KEEP_DAYS = 7;
   var $ = function (id) { return document.getElementById(id); };
   var S = { repo: "", token: "", branch: "main", view: "home", runs: [], selRun: null, detailGen: 0, ticker: null, runsTimer: null,
-            homeRunId: null, started: null, histOpen: null };
+            homeRunId: null, started: null, histOpen: null, sel: {} };
 
   /* ---------- storage ---------- */
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
@@ -670,18 +682,22 @@ code { background:var(--field); border:1px solid var(--line); border-radius:6px;
   /* ---------- History view ---------- */
   function renderHistory() {
     var box = $("histList"), done = S.runs.filter(function (x) { return x.conclusion === "success"; });
-    if (!S.runs.length) { box.innerHTML = '<div class="empty">No runs yet.</div>'; return; }
-    if (!done.length) { box.innerHTML = '<div class="empty">No finished runs yet.</div>'; return; }
+    if (!S.runs.length) { box.innerHTML = '<div class="empty">No runs yet.</div>'; $("histBar").classList.add("hidden"); return; }
+    if (!done.length) { box.innerHTML = '<div class="empty">No finished runs yet.</div>'; $("histBar").classList.add("hidden"); return; }
     if (box.getAttribute("data-sig") === done.map(function (x) { return x.id; }).join(",") + "|" + S.histOpen) return;   // nothing changed: keep the open reels
     box.setAttribute("data-sig", done.map(function (x) { return x.id; }).join(",") + "|" + S.histOpen);
     var meta = metaAll();
     box.innerHTML = done.map(function (x) {
       var exp = isExpired(x), m = meta[x.id], left = Math.max(0, KEEP_DAYS - Math.floor((Date.now() - new Date(x.created_at).getTime()) / 86400000));
       var when = new Date(x.created_at).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-      return '<div class="hItem" data-id="' + x.id + '"><div class="hHead"><span class="dot ' + (exp ? "" : "ok") + '"></span><span class="grow"><span class="t1" style="font-weight:700">Run #' + x.run_number + '</span><br><span class="t2" style="color:var(--muted);font-size:13px">' + esc(when) +
+      return '<div class="hItem" data-id="' + x.id + '"><div class="hHead"><input type="checkbox" class="chk hsel" data-id="' + x.id + '" aria-label="Select Run #' + x.run_number + '"' + (S.sel[x.id] ? " checked" : "") + '><span class="dot ' + (exp ? "" : "ok") + '"></span><span class="grow"><span class="t1" style="font-weight:700">Run #' + x.run_number + '</span><br><span class="t2" style="color:var(--muted);font-size:13px">' + esc(when) +
         (m ? " · " + esc(m.channel.replace("channel", "Channel ")) + " · " + esc(m.count) + " reels" : "") + (exp ? " · Expired" : " · " + left + (left === 1 ? " day" : " days") + " left") + '</span></span>' +
         (exp ? '<span style="color:var(--muted);font-size:13px">Expired</span>' : '<button class="small" type="button" data-open="' + x.id + '">' + (S.histOpen === x.id ? "Hide" : "Open reels") + '</button>') + '</div><div class="hBody"></div></div>';
     }).join("");
+    $("histBar").classList.remove("hidden"); syncSel();
+    Array.prototype.forEach.call(box.querySelectorAll(".hsel"), function (c) {
+      c.addEventListener("change", function () { var id = Number(c.getAttribute("data-id")); if (c.checked) S.sel[id] = true; else delete S.sel[id]; syncSel(); });
+    });
     Array.prototype.forEach.call(box.querySelectorAll("[data-open]"), function (b) {
       b.addEventListener("click", function () {
         var id = Number(b.getAttribute("data-open")), run = S.runs.filter(function (x) { return x.id === id; })[0];
@@ -691,6 +707,47 @@ code { background:var(--field); border:1px solid var(--line); border-radius:6px;
         histPanel = new Panel(box.querySelector('.hItem[data-id="' + id + '"] .hBody')); histPanel.load(id, run.html_url);
       });
     });
+  }
+
+
+  /* ---------- History: select and delete ---------- */
+  function histIds() { return S.runs.filter(function (x) { return x.conclusion === "success"; }).map(function (x) { return x.id; }); }
+  function syncSel() {
+    var ids = histIds(); Object.keys(S.sel).forEach(function (k) { if (ids.indexOf(Number(k)) < 0) delete S.sel[k]; });
+    var n = Object.keys(S.sel).length;
+    $("selCount").textContent = n ? n + " selected" : ""; $("btnDel").disabled = !n;
+    $("btnDel").textContent = n ? "Delete selected (" + n + ")" : "Delete selected";
+    $("selAll").checked = n > 0 && n === ids.length; $("selAll").indeterminate = n > 0 && n < ids.length;
+  }
+  $("selAll").addEventListener("change", function () {
+    var on = $("selAll").checked; S.sel = {};
+    if (on) histIds().forEach(function (id) { S.sel[id] = true; });
+    Array.prototype.forEach.call(document.querySelectorAll(".hsel"), function (c) { c.checked = on; });
+    syncSel();
+  });
+  $("btnDel").addEventListener("click", function () {
+    var n = Object.keys(S.sel).length; if (!n) return;
+    $("delConfirm").innerHTML = '<div class="msg bad">Delete <b>' + n + (n === 1 ? " run" : " runs") + '</b> and all their reels and Word files from GitHub? This can\'t be undone.' +
+      '<div class="row" style="margin-top:10px"><button class="small dangerSolid" type="button" id="delYes">Yes, delete</button><button class="small" type="button" id="delNo">Cancel</button></div></div>';
+    $("delNo").addEventListener("click", function () { $("delConfirm").innerHTML = ""; });
+    $("delYes").addEventListener("click", doDelete);
+  });
+  async function doDelete() {
+    var ids = Object.keys(S.sel).map(Number), failed = 0, denied = false, gone = [];
+    $("btnDel").disabled = true; $("selAll").disabled = true;
+    for (var i = 0; i < ids.length; i++) {
+      $("delConfirm").innerHTML = '<div class="msg warn">Deleting ' + (i + 1) + ' of ' + ids.length + '…</div>';
+      try {
+        var r = await api("/repos/" + S.repo + "/actions/runs/" + ids[i], { method: "DELETE" });
+        if (r.status === 204 || r.status === 404) gone.push(ids[i]);
+        else { failed++; if (r.status === 403) denied = true; }
+      } catch (e) { failed++; }
+    }
+    gone.forEach(function (id) { delete S.sel[id]; S.runs = S.runs.filter(function (x) { return x.id !== id; }); if (S.histOpen === id) { S.histOpen = null; if (histPanel) histPanel.clear(); } if (S.homeRunId === id) S.homeRunId = null; });
+    $("selAll").disabled = false; $("histList").removeAttribute("data-sig");
+    $("delConfirm").innerHTML = '<div class="msg ' + (failed ? "warn" : "good") + '">Deleted ' + gone.length + (gone.length === 1 ? " run" : " runs") + '.' +
+      (failed ? " " + failed + " couldn't be deleted" + (denied ? ": your key needs <b>Actions: Read and write</b> to delete." : ".") : "") + '</div>';
+    onRuns(); refreshRuns();
   }
 
   /* ---------- starting a job ---------- */
