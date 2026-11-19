@@ -230,23 +230,10 @@ code { background:var(--field); border:1px solid var(--line); border-radius:6px;
               <label class="lbl" for="template">Style</label>
               <select id="template">
                 <option value="auto">Auto: AI picks the best style for each clip</option>
-                <optgroup label="GTA 6">
-                  <option value="gta_moment">gta_moment: big gameplay moment</option>
-                  <option value="gta_react">gta_react: facecam + gameplay</option>
-                  <option value="gta_list">gta_list: hidden details, lists</option>
-                  <option value="gta_chase">gta_chase: police chase</option>
-                  <option value="gta_heist">gta_heist: heist, big money</option>
-                  <option value="gta_fail">gta_fail: fails, glitches</option>
-                  <option value="gta_cinematic">gta_cinematic: graphics, scenery</option>
-                </optgroup>
-                <optgroup label="Stream">
-                  <option value="stream_clutch">stream_clutch: big plays</option>
-                  <option value="stream_funny">stream_funny: funny moments</option>
-                </optgroup>
-                <optgroup label="Video">
-                  <option value="video_story">video_story: story payoff</option>
-                  <option value="video_talk">video_talk: talking head</option>
-                </optgroup>
+                <option value="cinematic">cinematic: widescreen, teal-orange, story and scenery</option>
+                <option value="hype">hype: big zoom, pulsing, action and chaos</option>
+                <option value="split_live">split_live: facecam top, gameplay below, sentence captions</option>
+                <option value="split_meme">split_meme: facecam top, one meme line, no captions</option>
               </select>
             </div>
             <div class="field">
@@ -781,7 +768,7 @@ code { background:var(--field); border:1px solid var(--line); border-radius:6px;
     var f; try { f = JSON.parse(lsGet("cf.form") || "null"); } catch (e) { f = null; }
     if (!f) return;
     $("url").value = f.url || ""; $("req").value = f.req || "";
-    if (f.template) $("template").value = f.template;
+    if (f.template) { $("template").value = f.template; if ($("template").value !== f.template) $("template").value = "auto"; }
     ["channel", "count"].forEach(function (n) { var el = document.querySelector('input[name="' + n + '"][value="' + f[n] + '"]'); if (el) el.checked = true; });
   }
 

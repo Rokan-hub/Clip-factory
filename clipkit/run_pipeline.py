@@ -11,23 +11,19 @@ import argparse, json, os, re, shutil, subprocess, sys, textwrap
 
 K = os.path.dirname(os.path.abspath(__file__))
 GROUP = {"channel1": "gta", "channel2": "stream", "channel3": "video"}
-DEFAULT_TEMPLATE = {"channel1": "gta_moment", "channel2": "stream_clutch", "channel3": "video_story"}
-# fallback rule when no AI chose a template (channel1 / GTA)
+DEFAULT_TEMPLATE = {"channel1": "hype", "channel2": "split_live", "channel3": "cinematic"}
+# fallback rule when no AI chose a template (same 4 presets for every channel)
 KEYWORDS = [
-    ("gta_chase", r"\b(cops?|police|chase|chasing|wanted|stars?|helicopter|swat|getaway|pursuit|wanted level)\b"),
-    ("gta_heist", r"(\$\s?\d|\b(money|cash|bank|heist|rob|robbery|vault|million|thousand|paid|bought|expensive|lambo|supercar)\b)"),
-    ("gta_fail",  r"\b(fail|fell|fall|crash|crashed|oops|bruh|glitch|ragdoll|flew|died|dead|why|lmao|lol)\b"),
-    ("gta_cinematic", r"\b(look at|beautiful|graphics|view|sunset|detail|insane detail|realistic|map|city)\b"),
+    ("hype", r"(\$\s?\d|\b(cops?|police|chase|wanted|run|shoot|crash|crashed|rob|robbery|heist|cash|fight|fail|go go|oh my god|bro what|dead|died)\b)"),
+    ("cinematic", r"\b(look at|beautiful|graphics|view|sunset|detail|realistic|map|city|story|mom|mother|family|prison|love)\b"),
+    ("split_meme", r"\b(lmao|lol|haha|bro|nah|no way|what the|why|crying|i'm dead|wild)\b"),
+    ("split_live", r"\b(i think|this is|look|so|actually|you can see|let's|we're gonna|i'm gonna)\b"),
 ]
 NO_SPEECH_HOOKS = {
-    "gta_chase": ["COPS WON'T STOP", "5 STARS IN 10 SECONDS", "THE GETAWAY WAS CRAZY"],
-    "gta_heist": ["THIS HEIST WENT CRAZY", "WE ROBBED EVERYTHING", "THE PAYDAY WAS INSANE"],
-    "gta_fail": ["WAIT FOR IT...", "THIS DID NOT GO TO PLAN", "GTA 6 PHYSICS ARE WILD"],
-    "gta_cinematic": ["GTA 6 LOOKS UNREAL", "THIS ISN'T REAL LIFE", "VICE CITY AT NIGHT"],
-    "gta_moment": ["THIS WAS INSANE", "WATCH WHAT HAPPENS", "NOBODY SAW THIS COMING", "I CAN'T BELIEVE THIS WORKED",
-                   "THE ENDING THOUGH", "THIS IS WHY I LOVE GTA 6", "HOW DID THIS HAPPEN"],
-    "gta_list": ["YOU MISSED THIS"], "gta_react": ["HIS REACTION"], "stream_clutch": ["THE CLUTCH"],
-    "stream_funny": ["I CAN'T STOP LAUGHING"], "video_story": ["WATCH TILL THE END"], "video_talk": ["LISTEN TO THIS"]}
+    "hype": ["THIS WAS INSANE", "WATCH WHAT HAPPENS", "NOBODY SAW THIS COMING", "THE ENDING THOUGH",
+             "THIS DID NOT GO TO PLAN", "GTA 6 PHYSICS ARE WILD", "COPS WON'T STOP"],
+    "cinematic": ["GTA 6 LOOKS UNREAL", "THIS ISN'T REAL LIFE", "VICE CITY AT NIGHT", "LOOK AT THIS DETAIL"],
+    "split_live": ["HIS FIRST REACTION"], "split_meme": ["BRO IS MORE EXCITED THAN THE CHARACTERS"]}
 
 def sh(cmd, **kw): subprocess.run(cmd, check=True, **kw)
 
@@ -75,10 +71,9 @@ def energy_pick(wav, count, mn, mx):
     return sorted(out, key=lambda m: -m["score"])
 
 def keyword_template(text, channel):
-    if channel != "channel1": return DEFAULT_TEMPLATE[channel]
     hits = {name: len(re.findall(rx, text.lower())) for name, rx in KEYWORDS}
     best = max(hits, key=hits.get)
-    return best if hits[best] >= 2 else "gta_moment"
+    return best if hits[best] >= 2 else DEFAULT_TEMPLATE[channel]
 
 def main():
     ap = argparse.ArgumentParser()
@@ -135,6 +130,14 @@ def main():
         elif m.get("template") not in group:
             txt = " ".join(w["w"] for w in words if m["start"] <= w["s"] <= m["end"])
             m["template"] = keyword_template(txt + " " + m.get("hook", ""), a.channel)
+    if a.template == "auto" and len(moments) >= 4:   # the 4 presets work as a set: spread them out
+        names = list(group); cap = max(2, -(-len(moments) // len(names)))
+        cnt = {n: 0 for n in names}
+        for m in moments: cnt[m["template"]] = cnt.get(m["template"], 0) + 1
+        for m in sorted(moments, key=lambda x: x.get("score", 0)):     # move the weakest extras first
+            if cnt[m["template"]] > cap:
+                spare = min(names, key=lambda n: cnt[n])
+                cnt[m["template"]] -= 1; m["template"] = spare; cnt[spare] += 1
     used = {}
     for m in moments:
         if not m.get("hook"):

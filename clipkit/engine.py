@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Template clip engine.  Usage: engine.py job.json
 job = {
-  "template": "gta_moment", "channel": "channel1",
+  "template": "hype", "channel": "channel1",
   "source": "/path/src.mp4", "words": "/path/words.json" (optional, for captions),
   "out": "/path/out.mp4",
   "segments": [{"s":12.0,"e":18.5,"speed":1.0,"freeze":0,"freeze_text":"WAIT..."}],
@@ -48,6 +48,96 @@ def find_face(src, times):
         if len(f): x, y, w, h = max(f, key=lambda b: b[2] * b[3]); boxes.append((x / W, y / H, w / W, h / H))
     if not boxes: return None
     return tuple(statistics.median(b[i] for b in boxes) for i in range(4))
+
+def find_cam(src, total, n=14):
+    """Streamer facecam = a face that stays in the same spot across the clip (game characters move).
+    Returns (face_box, window_box) as fractions, or None. window_box is the face pushed out to its corner."""
+    import cv2
+    cas = cv2.CascadeClassifier(face_model())
+    if cas.empty(): return None
+    cap = cv2.VideoCapture(src); hits, got = [], 0
+    for i in range(n):
+        cap.set(cv2.CAP_PROP_POS_MSEC, total * (i + 0.5) / n * 1000); ok, fr = cap.read()
+        if not ok: continue
+        got += 1; H, Wd = fr.shape[:2]; g = cv2.cvtColor(fr, cv2.COLOR_BGR2GRAY)
+        for (x, y, w, h) in cas.detectMultiScale(g, 1.1, 5, minSize=(int(H * 0.06), int(H * 0.06))):
+            hits.append((x / Wd, y / H, w / Wd, h / H))
+    if not hits or not got: return None
+    best, members = None, []
+    for c in hits:                                   # cluster by centre position
+        cx, cy = c[0] + c[2] / 2, c[1] + c[3] / 2
+        m = [b for b in hits if abs(b[0] + b[2] / 2 - cx) < 0.04 and abs(b[1] + b[3] / 2 - cy) < 0.05]
+        if len(m) > len(members): members, best = m, c
+    if len(members) < max(3, got * 0.35): return None
+    fb = tuple(statistics.median(b[i] for b in members) for i in range(4))
+    fx, fy, fw, fh = fb; cx, cy = fx + fw / 2, fy + fh / 2
+    if fw > 0.35: return None                       # a full-screen face is a talking head, not a corner cam
+    x0, x1 = (fx - 0.9 * fw, 1.0) if cx > 0.5 else (0.0, fx + fw * 1.9)
+    y0, y1 = (0.0, fy + fh * 2.0) if cy < 0.5 else (fy - fh * 1.2, 1.0)
+    # snap to the real cam border: an edge that stays put while the gameplay around it changes
+    import numpy as np
+    gx_acc, gy_acc, k = None, None, 0
+    for i in range(n):
+        cap.set(cv2.CAP_PROP_POS_MSEC, total * (i + 0.5) / n * 1000); ok, fr = cap.read()
+        if not ok: continue
+        g = cv2.cvtColor(fr, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        gxm = np.abs(np.diff(g, axis=1)); gym = np.abs(np.diff(g, axis=0))
+        gx_acc = [gxm] if gx_acc is None else gx_acc + [gxm]
+        gy_acc = [gym] if gy_acc is None else gy_acc + [gym]; k += 1
+    if k >= 3:
+        gx_acc = np.median(np.array(gx_acc), 0); gy_acc = np.median(np.array(gy_acc), 0)   # edge present in most frames
+        H, Wd = gx_acc.shape[0], gy_acc.shape[1]
+        r0, r1 = int(fy * H), int(min(1, fy + fh) * H)
+        c0, c1 = int(fx * Wd), int(min(1, fx + fw) * Wd)
+        if cx > 0.5:   # cam on the right: look for its left edge
+            lo, hi = int(max(0, fx - 2.5 * fw) * Wd), int(fx * Wd)
+            prof = gx_acc[r0:r1, lo:hi].mean(0)
+            if len(prof) and prof.max() > 15: x0 = (lo + int(prof.argmax()) + 1) / Wd
+        else:
+            lo, hi = int((fx + fw) * Wd), int(min(1, fx + 3.5 * fw) * Wd)
+            prof = gx_acc[r0:r1, lo:hi].mean(0)
+            if len(prof) and prof.max() > 15: x1 = (lo + int(prof.argmax())) / Wd
+        if cy < 0.5:   # cam at the top: look for its bottom edge
+            lo, hi = int((fy + fh) * H), int(min(1, fy + 3.5 * fh) * H)
+            prof = gy_acc[lo:hi, c0:c1].mean(1)
+            if len(prof) and prof.max() > 15: y1 = (lo + int(prof.argmax())) / H
+        else:
+            lo, hi = int(max(0, fy - 2.5 * fh) * H), int(fy * H)
+            prof = gy_acc[lo:hi, c0:c1].mean(1)
+            if len(prof) and prof.max() > 15: y0 = (lo + int(prof.argmax()) + 1) / H
+        wb = (x0, y0, x1, y1)   # snapped: crop exactly inside the border
+        pad = 0.006   # step just inside the border line
+        return fb, (min(1, x0 + pad) if cx > 0.5 else x0, max(0, y0 + pad) if cy >= 0.5 else y0,
+                    max(0, x1 - pad) if cx <= 0.5 else x1, max(0, y1 - pad) if cy < 0.5 else y1)
+    wb = (max(0, x0 - 0.01), max(0, y0 - 0.01), min(1, x1 + 0.01), min(1, y1 + 0.01))  # x0,y0,x1,y1
+    return fb, wb
+
+def game_rect(aspect, wb, sw, shh):
+    """Largest rect of `aspect` (w/h) in the frame that avoids the facecam window. Pixels x,y,w,h."""
+    if wb:
+        X0, Y0, X1, Y1 = wb[0] * sw, wb[1] * shh, wb[2] * sw, wb[3] * shh
+        regions = [(0, 0, X0, shh), (X1, 0, sw - X1, shh), (0, 0, sw, Y0), (0, Y1, sw, shh - Y1)]
+    else:
+        regions = [(0, 0, sw, shh)]
+    best = None
+    for rx, ry, rw, rh in regions:
+        if rw < sw * 0.3 or rh < shh * 0.3: continue
+        w = min(rw, rh * aspect); h = w / aspect
+        if best is None or w * h > best[2] * best[3]:
+            best = (rx + (rw - w) / 2, ry + (rh - h) / 2, w, h)
+    if best is None:                                 # cam too big to avoid: plain centre crop
+        w = min(sw, shh * aspect); h = w / aspect; best = ((sw - w) / 2, (shh - h) / 2, w, h)
+    x, y, w, h = best
+    w, h = int(w) // 2 * 2, int(h) // 2 * 2
+    return int(x), int(y), w, h
+
+def brightness(src, total):
+    import cv2
+    cap = cv2.VideoCapture(src); vals = []
+    for f in (0.1, 0.3, 0.5, 0.7, 0.9):
+        cap.set(cv2.CAP_PROP_POS_MSEC, total * f * 1000); ok, fr = cap.read()
+        if ok: vals.append(cv2.cvtColor(fr, cv2.COLOR_BGR2GRAY).mean())
+    return statistics.mean(vals) if vals else 100
 
 def main():
     job = json.load(open(sys.argv[1]))
@@ -115,11 +205,14 @@ def main():
             if m and (re.fullmatch(r"[,.]\d+[.?!,]*", w["w"]) or re.fullmatch(r"[^\w$]+", w["w"])):
                 m[-1]["w"] += w["w"]; m[-1]["e"] = w["e"]
             else: m.append(w)
+        upper = T.get("cap_upper", True)
         for w in m:
-            raw = w["w"]; disp = re.sub(r"[.,;:]+$", "", raw)
-            if norm(disp) in ("shit", "fuck", "fucking"): continue
-            words.append((disp.upper(), o + (w["s"] - s["s"]) / s["speed"], o + (w["e"] - s["s"]) / s["speed"],
-                          raw[-1:] in "?!."))
+            raw = w["w"].strip(); disp = re.sub(r"[,;:]+$", "", raw) if not upper else re.sub(r"[.,;:]+$", "", raw)
+            if not norm(disp) or norm(disp) in ("shit", "fuck", "fucking"): continue
+            st, en = o + (w["s"] - s["s"]) / s["speed"], o + (w["e"] - s["s"]) / s["speed"]
+            if words and (st < words[-1][1] + 0.03 or (norm(disp) == norm(words[-1][0]) and st - words[-1][2] < 0.15)):
+                continue                             # transcript glitch: duplicate / overlapping word
+            words.append((disp.upper() if upper else disp, st, en, raw[-1:] in "?!."))
 
     # emphasis -> zooms / shakes / hits
     emph, last = [], -9
@@ -130,7 +223,8 @@ def main():
     shakes = [t for t in shakes if t is not None] or (emph if T["shake"] else [])
 
     # ---- 3. ASS overlay
-    F, cs = ch["font"], T["cap_size"]
+    F, cs = T.get("cap_font", ch["font"]), T["cap_size"]
+    co = T.get("cap_outline", 7); MF, MS = T.get("meme_font", "Anton"), T.get("meme_size", 96)
     hdr = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -139,8 +233,9 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Cap,{F},{cs},&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,7,3,5,50,50,0,1
-Style: Box,{F},74,{ass_col(ch['box_fg'])},&H00000000,{ass_col(ch['box'])},&H00000000,-1,0,0,0,100,100,0,0,3,18,0,5,60,60,0,1
+Style: Cap,{F},{cs},&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,{co},3,5,50,50,0,1
+Style: Meme,{MF},{MS},&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,0,0,0,0,100,100,0,0,1,9,2,5,40,40,0,1
+Style: Box,{F},64,{ass_col(ch['box_fg'])},&H00000000,{ass_col(ch['box'])},&H00000000,-1,0,0,0,100,100,0,0,3,18,0,5,60,60,0,1
 Style: Num,{F},150,{ass_col(ch['hl'])},&H00000000,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,10,5,5,60,60,0,1
 Style: Wait,{F},130,&H00FFFFFF,&H00000000,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,10,5,5,60,60,0,1
 Style: Chat,{F},52,&H00FFFFFF,&H00000000,&H32202020,&H00000000,-1,0,0,0,100,100,0,0,3,20,0,5,80,80,0,1
@@ -154,9 +249,17 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         ev.append(f"Dialogue: {layer},{ts(st)},{ts(en)},{style},,0,0,0,,{{\\an5\\pos({x},{y}){extra}}}{txt}")
     POP = "\\fscx70\\fscy70\\t(0,120,\\fscx100\\fscy100)"
     hook_end = min(3.2, total)
-    if job.get("hook"): add(0, hook_end, "Box", 540, T["hook_y"], job["hook"], "\\fad(80,250)" + POP, 3)
-    if job.get("context"): add(hook_end, min(hook_end + 2.8, total), "Box", 540, T["hook_y"], job["context"], "\\fad(120,200)", 3)
-    if job.get("cta") and total > 6: add(total - 2.0, total, "Box", 540, T["hook_y"], job["cta"], "\\fad(150,0)" + POP, 3)
+    HM = T.get("hook_mode", "box")
+    if job.get("hook") and HM == "box":
+        add(0, hook_end, "Box", 540, T["hook_y"], job["hook"], "\\fad(80,250)" + POP, 3)
+    if job.get("hook") and HM == "meme":            # one meme line on the seam for the whole clip
+        import textwrap
+        line = re.sub(r"\s+", " ", job["hook"].replace("\\N", " ")).strip().upper()
+        line = "\\N".join(textwrap.wrap(line, T.get("meme_wrap", 20))[:2])
+        add(0, total, "Meme", 540, T["top_h"], line, "\\fad(0,0)", 3)
+    if job.get("context") and HM == "box": add(hook_end, min(hook_end + 2.8, total), "Box", 540, T["hook_y"], job["context"], "\\fad(120,200)", 3)
+    if job.get("cta") and T.get("cta", True) and total > 6:
+        add(total - 2.0, total, "Box", 540, T.get("cta_y", T.get("hook_y", 300)), job["cta"], "\\fad(150,0)" + POP, 3)
     sfx = []  # (file, time, volume)
     if job.get("stakes"):
         val = int(re.sub(r"\D", "", job["stakes"]) or 0); pre = job["stakes"].split(str(val)[0])[0] if val else ""
@@ -181,7 +284,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         if s.get("replay"):
             add(o, min(o + 1.6, total), "Box", 540, T.get("label_y", 560), "SLOW-MO REPLAY", "\\fad(60,200)" + POP, 4)
             sfx.append(("whoosh", max(0, o - 0.15), 0.8))
-    if not job.get("no_captions"):
+    if not (job.get("no_captions") or T.get("no_captions")):
         groups, cur = [], []
         for w in words:
             if cur and (len(cur) >= T["words_per"] or w[1] - cur[-1][2] > 0.45 or cur[-1][3]
@@ -189,51 +292,76 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 groups.append(cur); cur = []
             cur.append(w)
         if cur: groups.append(cur)
-        hl = ass_col(ch["hl"])
+        hlc = T.get("cap_hl", ch["hl"]) if "cap_hl" in T else ch["hl"]
+        hl = ass_col(hlc) if hlc else None
         for gi, g in enumerate(groups):
             nxt = groups[gi + 1][0][1] if gi + 1 < len(groups) else total
             for k, w in enumerate(g):
                 st = w[1]; en = g[k + 1][1] if k + 1 < len(g) else min(w[2] + 0.2, nxt)
-                en = max(en, st + 0.06)
-                txt = " ".join(("{\\c" + hl + "&}" + x[0] + "{\\c&HFFFFFF&}") if j == k else x[0] for j, x in enumerate(g))
+                en = max(min(en, nxt), st + 0.06)
+                txt = " ".join(("{\\c" + hl + "&}" + x[0] + "{\\c&HFFFFFF&}") if (hl and j == k) else x[0]
+                               for j, x in enumerate(g))
                 add(st, en, "Cap", 540, T["cap_y"], txt, POP if k == 0 else "", 0)
     ass = f"{work}/overlay.ass"; open(ass, "w").write(hdr + "\n".join(ev) + "\n")
 
     # ---- 4. layout -> 1080x1920
     sw, shh = 1920, 1080
     L = T["layout"]
+    lift = ""                                        # dark night scenes get lifted so the hook can land
+    br = brightness(joined, total)
+    if br < 55: lift = ",eq=gamma=1.45:brightness=0.05:contrast=1.05"
+    elif br < 80: lift = ",eq=gamma=1.22:brightness=0.03"
+    cam = None
+    if L in ("wide", "zoom43", "split"):
+        cam = None if job.get("facecam") else find_cam(joined, total)
+        if job.get("facecam"):
+            f = job["facecam"]; cam = (tuple(f), (f[0], f[1], f[0] + f[2], f[1] + f[3]))
+        print(f"   facecam: {'found at ' + str([round(float(v), 3) for v in cam[1]]) if cam else 'none'}  brightness {br:.0f}", flush=True)
+    if L == "split" and not cam:                     # no streamer cam -> fall back to the zoomed layout
+        L = "zoom43"; T = {**T, "game_y": 560}
+    BGS = {"dark": "eq=brightness=-0.12:saturation=1.2",
+           "cool": "eq=brightness=-0.3:saturation=0.9,colorbalance=bs=0.12:rs=-0.08"}
+    bgf = (f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=45,"
+           f"{BGS.get(T.get('bg', 'dark'), BGS['dark'])}")
     if L == "full_face" or (L == "full" and "crop_x" not in job):
         fb = find_face(joined, [total * f for f in (0.15, 0.35, 0.55, 0.75, 0.9)]) if L == "full_face" else None
         cx = (fb[0] + fb[2] / 2) if fb else 0.5
     else:
         cx = job.get("crop_x", 0.5)
     if L in ("full", "full_face"):
-        # 1920x1080 -> height 1920 -> width 3413; centre crop on cx
         sc = 1920 / shh; W2 = int(sw * sc) // 2 * 2
         x = int(min(max(cx * W2 - 540, 0), W2 - 1080))
-        base = f"[0:v]scale={W2}:1920,crop=1080:1920:{x}:0[base]"
+        base = f"[0:v]scale={W2}:1920,crop=1080:1920:{x}:0{lift}[base]"
     elif L == "blur":
         base = ("[0:v]split[b][f];[b]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
-                "boxblur=40:6,eq=brightness=-0.15:saturation=1.1[bg];[f]scale=1080:-2[fg];[bg][fg]overlay=0:(H-h)/2[base]")
+                f"boxblur=40:6,eq=brightness=-0.15:saturation=1.1[bg];[f]scale=1080:-2{lift}[fg];[bg][fg]overlay=0:(H-h)/2[base]")
+    elif L in ("wide", "zoom43"):
+        ar = 16 / 9 if L == "wide" else 4 / 3
+        gx, gy, gw, gh = game_rect(ar, cam[1] if cam else None, sw, shh)
+        oh = int(1080 / ar) // 2 * 2
+        base = (f"[0:v]split[b][f];[b]{bgf}[bg];[f]crop={gw}:{gh}:{gx}:{gy},scale=1080:{oh}:flags=lanczos,"
+                f"unsharp=5:5:0.7{lift}[fg];[bg][fg]overlay=0:{T.get('game_y', (1920 - oh) // 2)}[base]")
     elif L == "split":
         th = T["top_h"]; bh = 1920 - th
-        fc = job.get("facecam")
-        if not fc:
-            fb = find_face(joined, [total * f for f in (0.2, 0.5, 0.8)])
-            if fb:
-                ar = 1080 / th; hh = min(1.0, fb[3] * 3.0); ww = min(1.0, hh * shh * ar / sw)
-                fx = min(max(fb[0] + fb[2] / 2 - ww / 2, 0), 1 - ww); fy = min(max(fb[1] + fb[3] / 2 - hh / 2, 0), 1 - hh)
-                fc = [fx, fy, ww, hh]
-            else: fc = [0.3, 0, 0.4, 0.5]
-        gm = job.get("game", [0, 0, 1, 1])
-        def px(b): return [int(b[0] * sw), int(b[1] * shh), int(b[2] * sw) // 2 * 2, int(b[3] * shh) // 2 * 2]
-        a, g = px(fc), px(gm)
-        base = (f"[0:v]split[t][g];[t]crop={a[2]}:{a[3]}:{a[0]}:{a[1]},scale=1080:{th}:force_original_aspect_ratio=increase,"
-                f"crop=1080:{th}[top];[g]crop={g[2]}:{g[3]}:{g[0]}:{g[1]},scale=-2:{bh},crop=1080:{bh}:(iw-1080)*{cx}:0[bot];"
-                f"[top][bot]vstack,drawbox=x=0:y={th-3}:w=1080:h=6:color=#{ch['hl']}:t=fill[base]")
+        fb, wb = cam
+        # top: crop the cam window to the panel shape, centred on the face
+        WX0, WY0, WX1, WY1 = wb[0] * sw, wb[1] * shh, wb[2] * sw, wb[3] * shh
+        ar = 1080 / th; ww, hh = WX1 - WX0, WY1 - WY0
+        if ww / hh > ar: cw, chh = hh * ar, hh
+        else: cw, chh = ww, ww / ar
+        fcx, fcy = (fb[0] + fb[2] / 2) * sw, (fb[1] + fb[3] / 2) * shh
+        cxp = min(max(fcx - cw / 2, WX0), WX1 - cw); cyp = min(max(fcy - chh * 0.45, WY0), WY1 - chh)
+        a = [int(cxp), int(cyp), int(cw) // 2 * 2, int(chh) // 2 * 2]
+        gx, gy, gw, gh = game_rect(1080 / bh, wb, sw, shh)
+        div = (f",drawbox=x=0:y={th - T.get('divider_h', 8) // 2}:w=1080:h={T.get('divider_h', 8)}:color=#{T['divider']}:t=fill"
+               if T.get("divider") else "")
+        base = (f"[0:v]split[t][g];[t]crop={a[2]}:{a[3]}:{a[0]}:{a[1]},scale=1080:{th}:flags=lanczos,unsharp=5:5:0.6[top];"
+                f"[g]crop={gw}:{gh}:{gx}:{gy},scale=1080:{bh}:flags=lanczos,unsharp=5:5:0.6{lift}[bot];"
+                f"[top][bot]vstack{div}[base]")
     # ---- 5. zoom / shake
     zt = [f"{T['zoom']}*min(1,max(0,(it-{t-0.05:.2f})/0.1))*between(it,{t-0.05:.2f},{t+0.9:.2f})" for t in emph[:14]] if T["zoom"] else []
     if T.get("push"): zt.append(f"{T['push']}*it/{total:.2f}")   # slow cinematic push-in
+    if T.get("pulse"): zt.append(f"{T['pulse']}*abs(sin(it*3.2))")  # beat-like breathing zoom
     sh = [f"16*sin(it*90)*between(it,{t:.2f},{t+0.28:.2f})" for t in shakes[:10]]
     zb = 1.04 if sh else 1.0
     if zt or sh:
@@ -252,6 +380,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     }
     look = []
     if T.get("grade") in GRADES: look.append(GRADES[T["grade"]])
+    if T.get("grain"): look.append("noise=alls=6:allf=t")
     if T.get("vignette"): look.append("vignette=PI/5")
     if T.get("letterbox"):
         look.append("drawbox=x=0:y=0:w=iw:h=150:color=black:t=fill,drawbox=x=0:y=ih-150:w=iw:h=150:color=black:t=fill")
@@ -265,7 +394,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     lk = ("," + ",".join(look)) if look else ""
     vchain = f"{base};{mot};[mv]format=yuv420p{lk},ass={ass}:fontsdir={FONTDIRS}"
     if T.get("progress"):
-        vchain += (f"[cap];color=c=0x{ch['hl']}:s=1080x12:r=30[pb];"
+        vchain += (f"[cap];color=c=0x{T.get('bar', ch['hl'])}:s=1080x12:r=30[pb];"
                    f"[cap][pb]overlay=x='-w+w*t/{total:.3f}':y=0:shortest=1[vout]")
     else:
         vchain += "[vout]"

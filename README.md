@@ -63,17 +63,10 @@ Change models with secrets such as `GROQ_MODEL`, `CEREBRAS_MODEL`, `MISTRAL_MODE
 
 | Template | Use for | What it does |
 |---|---|---|
-| `gta_moment` | Any big gameplay moment | Punch zooms on key words, shake + hit on impacts, whoosh on cuts, punchy colour |
-| `gta_react` | Streamer facecam + gameplay | Face on top, gameplay below, reaction-first hook |
-| `gta_list` | Hidden details, easter eggs, top 5s | Full frame on blurred fill, big numbers, freeze + WAIT, pop sounds |
-| `gta_chase` | Police chases, wanted levels, getaways | 1.15× build-up into real-time finish, red/blue siren flash + shake + hit on impacts, vignette, riser into the ending |
-| `gta_heist` | Heists, robberies, big money, expensive cars | Automatic $ counter from what's said, warm Vice City grade, cinematic black bars, slow-mo replay of the payoff |
-| `gta_fail` | Fails, ragdolls, funny physics, glitches | Freeze + "WAIT FOR IT..." right before the payoff, then a slow-mo replay, white flash on the hit |
-| `gta_cinematic` | Graphics, scenery, sunsets, map showcase | Whole frame visible on blurred fill, teal-orange grade, slow push-in, vignette, calm captions |
-| `stream_clutch` | Stream big plays | Facecam split, zoom + shake on the reaction |
-| `stream_funny` | Stream funny moments | Context card, chat pop-ups, pop sounds |
-| `video_story` | YouTube story payoffs | Blurred fill, $ counter, payoff-first |
-| `video_talk` | Talking head | Face-centred crop, big centre captions, punch-ins |
+| `cinematic` | Story, cutscenes, scenery, driving, calm or emotional moments | Widescreen gameplay on a dark blurred fill, teal-orange grade, film grain, vignette, slow push-in, pink word highlight |
+| `hype` | Action, chases, robberies, fails, loud chaos | Big 4:3 zoom with a pulsing zoom, punch-ins on key words, big centre captions with yellow highlight |
+| `split_live` | Streamer commentating over gameplay | Facecam on top (auto-detected, cropped exactly inside its border), red divider, gameplay below, sentence-case captions |
+| `split_meme` | The streamer's reaction is the joke | Big facecam on top, gameplay below, one all-caps meme line on the seam, no word captions |
 
 Every template also has: word-by-word captions with the active word highlighted, hook text for the first 3 s, call-to-action at the end,
 a progress bar along the top (keeps people watching), loudness normalised to −14 LUFS (the Shorts/Reels standard), 1080×1920 at 30 fps.

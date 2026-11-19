@@ -19,7 +19,7 @@ on:
       template:
         description: "Editing template (auto = AI picks the best one for each clip)"
         type: choice
-        options: [auto, gta_moment, gta_react, gta_list, gta_chase, gta_heist, gta_fail, gta_cinematic, stream_clutch, stream_funny, video_story, video_talk]
+        options: [auto, cinematic, hype, split_live, split_meme]
         default: auto
       count:
         description: "How many reels from this video"
@@ -48,6 +48,9 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg fonts-inter
           sudo mkdir -p /usr/share/fonts/truetype/poppins
+          sudo mkdir -p /usr/share/fonts/truetype/anton
+          sudo curl -fsSL -o /usr/share/fonts/truetype/anton/Anton-Regular.ttf \
+            https://github.com/google/fonts/raw/main/ofl/anton/Anton-Regular.ttf || true
           for w in Bold Black; do
             sudo curl -fsSL -o /usr/share/fonts/truetype/poppins/Poppins-$w.ttf \
               https://github.com/google/fonts/raw/main/ofl/poppins/Poppins-$w.ttf || true
