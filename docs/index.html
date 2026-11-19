@@ -270,6 +270,7 @@ button.copied { border-color:var(--good); color:var(--good); }
   /* ---------- setup ---------- */
   function showSetup(open) {
     $("setup").classList.toggle("hidden", !open);
+    if (open) { try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) { window.scrollTo(0, 0); } }
     $("btnForget").classList.toggle("hidden", !S.token);
   }
   function setConnected(login) {
@@ -309,7 +310,7 @@ button.copied { border-color:var(--good); color:var(--good); }
   async function start() {
     msg($("formMsg"), "", "");
     var url = $("url").value.trim();
-    if (!S.token) { showSetup(true); msg($("formMsg"), "warn", "Connect GitHub first (one time)."); return; }
+    if (!S.token) { showSetup(true); msg($("formMsg"), "warn", "Connect GitHub first (one time). The setup box is now at the top of the page: scroll up."); return; }
     if (!/^https?:\/\/\S+$/.test(url)) { msg($("formMsg"), "bad", "Paste the full video link, starting with <code>https://</code>."); return; }
     var inputs = { source_url: url, channel: val("channel"), template: $("template").value, count: val("count"), required_text: $("req").value.trim() };
     saveForm();
