@@ -112,8 +112,9 @@ def find_cam(src, total, n=14):
     wb = (max(0, x0 - 0.01), max(0, y0 - 0.01), min(1, x1 + 0.01), min(1, y1 + 0.01))  # x0,y0,x1,y1
     return fb, wb
 
-def game_rect(aspect, wb, sw, shh):
-    """Largest rect of `aspect` (w/h) in the frame that avoids the facecam window. Pixels x,y,w,h."""
+def game_rect(aspect, wb, sw, shh, focus_x=None):
+    """Largest rect of `aspect` (w/h) in the frame that avoids the facecam window. Pixels x,y,w,h.
+    focus_x (0-1): slide the rect sideways toward where the action is, staying inside the free region."""
     if wb:
         X0, Y0, X1, Y1 = wb[0] * sw, wb[1] * shh, wb[2] * sw, wb[3] * shh
         regions = [(0, 0, X0, shh), (X1, 0, sw - X1, shh), (0, 0, sw, Y0), (0, Y1, sw, shh - Y1)]
@@ -124,12 +125,45 @@ def game_rect(aspect, wb, sw, shh):
         if rw < sw * 0.3 or rh < shh * 0.3: continue
         w = min(rw, rh * aspect); h = w / aspect
         if best is None or w * h > best[2] * best[3]:
-            best = (rx + (rw - w) / 2, ry + (rh - h) / 2, w, h)
+            x = rx + (rw - w) / 2
+            if focus_x is not None: x = min(max(focus_x * sw - w / 2, rx), rx + rw - w)
+            best = (x, ry + (rh - h) / 2, w, h)
     if best is None:                                 # cam too big to avoid: plain centre crop
         w = min(sw, shh * aspect); h = w / aspect; best = ((sw - w) / 2, (shh - h) / 2, w, h)
     x, y, w, h = best
     w, h = int(w) // 2 * 2, int(h) // 2 * 2
     return int(x), int(y), w, h
+
+def action_x(src, total, cam=None, n=24):
+    """Where the action is, left to right (0-1): centre of frame-to-frame change, facecam ignored.
+    Pulled halfway back to the middle so a tall crop never loses the player character (usually centred)."""
+    import cv2, numpy as np
+    cap = cv2.VideoCapture(src); prev = None; acc = None
+    for i in range(n * 2):
+        cap.set(cv2.CAP_PROP_POS_MSEC, total * (i // 2 + 0.5) / n * 1000 + (i % 2) * 150)
+        ok, fr = cap.read()
+        if not ok: prev = None; continue
+        g = cv2.cvtColor(cv2.resize(fr, (192, 108)), cv2.COLOR_BGR2GRAY).astype(np.float32)
+        if i % 2 and prev is not None:
+            d = np.abs(g - prev)
+            if cam:
+                x0, y0, x1, y1 = cam
+                d[int(y0 * 108):int(np.ceil(y1 * 108)), int(x0 * 192):int(np.ceil(x1 * 192))] = 0
+            col = d.mean(0); acc = col if acc is None else acc + col
+        prev = g
+    if acc is None or acc.sum() < 1e-6: return 0.5
+    xs = (np.arange(192) + 0.5) / 192
+    cx = float((acc * xs).sum() / acc.sum())
+    return 0.5 + (cx - 0.5) * 0.5
+
+SWEARS = re.compile(r"^(mother)?f+u+c*k+\w*$|^sh+i+t+\w*$|^bitch\w*$|^dick\w*$|^cocks?$|^puss(y|ies)$|^cunts?$|"
+                    r"^whores?$|^sluts?$|^fag\w*$|^nigg\w*$|^asshole\w*$|^bastards?$|^damn$|^goddamn\w*$")
+
+def mask_swear(word):
+    """F**K style: keeps captions readable without showing the word (ad-friendlier)."""
+    core = re.sub(r"[^A-Za-z]", "", word)
+    if not core or not SWEARS.match(core.lower()): return word
+    return core[0] + "*" * (len(core) - 2) + core[-1] if len(core) > 2 else core[0] + "*"
 
 def brightness(src, total):
     import cv2
@@ -208,8 +242,10 @@ def main():
         upper = T.get("cap_upper", True)
         for w in m:
             raw = w["w"].strip(); disp = re.sub(r"[,;:]+$", "", raw) if not upper else re.sub(r"[.,;:]+$", "", raw)
-            if not norm(disp) or norm(disp) in ("shit", "fuck", "fucking"): continue
+            if not norm(disp): continue
+            disp = mask_swear(disp)
             st, en = o + (w["s"] - s["s"]) / s["speed"], o + (w["e"] - s["s"]) / s["speed"]
+            en = min(en, st + 1.0)                   # transcripts stretch a word over silence: never hold one > 1 s
             if words and (st < words[-1][1] + 0.03 or (norm(disp) == norm(words[-1][0]) and st - words[-1][2] < 0.15)):
                 continue                             # transcript glitch: duplicate / overlapping word
             words.append((disp.upper() if upper else disp, st, en, raw[-1:] in "?!."))
@@ -252,11 +288,17 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     HM = T.get("hook_mode", "box")
     if job.get("hook") and HM == "box":
         add(0, hook_end, "Box", 540, T["hook_y"], job["hook"], "\\fad(80,250)" + POP, 3)
+    if job.get("hook") and HM == "seam":            # hook box on the facecam/gameplay seam, first seconds only
+        hs = min(T.get("hook_secs", 3.2), total)
+        add(0, hs, "Box", 540, T["top_h"], job["hook"], "\\fad(80,250)" + POP, 3)
     if job.get("hook") and HM == "meme":            # one meme line on the seam for the whole clip
         import textwrap
         line = re.sub(r"\s+", " ", job["hook"].replace("\\N", " ")).strip().upper()
-        line = "\\N".join(textwrap.wrap(line, T.get("meme_wrap", 20))[:2])
-        add(0, total, "Meme", 540, T["top_h"], line, "\\fad(0,0)", 3)
+        fits = T.get("meme_fit") or [[MS, T.get("meme_wrap", 20)]]
+        for size, wrap in fits:                      # shrink the font until it fits in 2 lines; never drop words
+            parts = textwrap.wrap(line, wrap)
+            if len(parts) <= 2: break
+        add(0, total, "Meme", 540, T["top_h"], "\\N".join(parts), f"\\fad(0,0)\\fs{size}", 3)
     if job.get("context") and HM == "box": add(hook_end, min(hook_end + 2.8, total), "Box", 540, T["hook_y"], job["context"], "\\fad(120,200)", 3)
     if job.get("cta") and T.get("cta", True) and total > 6:
         add(total - 2.0, total, "Box", 540, T.get("cta_y", T.get("hook_y", 300)), job["cta"], "\\fad(150,0)" + POP, 3)
@@ -287,8 +329,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     if not (job.get("no_captions") or T.get("no_captions")):
         groups, cur = [], []
         for w in words:
-            if cur and (len(cur) >= T["words_per"] or w[1] - cur[-1][2] > 0.45 or cur[-1][3]
-                        or sum(len(x[0]) + 1 for x in cur) + len(w[0]) > 18):
+            if cur and (len(cur) >= T["words_per"] or w[1] - cur[-1][2] > 0.45 or w[1] - cur[-1][1] > 1.0
+                        or cur[-1][3] or sum(len(x[0]) + 1 for x in cur) + len(w[0]) > 18):
                 groups.append(cur); cur = []
             cur.append(w)
         if cur: groups.append(cur)
@@ -298,7 +340,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             nxt = groups[gi + 1][0][1] if gi + 1 < len(groups) else total
             for k, w in enumerate(g):
                 st = w[1]; en = g[k + 1][1] if k + 1 < len(g) else min(w[2] + 0.2, nxt)
-                en = max(min(en, nxt), st + 0.06)
+                en = max(min(en, nxt, w[2] + 0.35, st + 1.0), st + 0.06)   # clear the screen in silences
                 txt = " ".join(("{\\c" + hl + "&}" + x[0] + "{\\c&HFFFFFF&}") if (hl and j == k) else x[0]
                                for j, x in enumerate(g))
                 add(st, en, "Cap", 540, T["cap_y"], txt, POP if k == 0 else "", 0)
@@ -312,13 +354,19 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     if br < 55: lift = ",eq=gamma=1.45:brightness=0.05:contrast=1.05"
     elif br < 80: lift = ",eq=gamma=1.22:brightness=0.03"
     cam = None
-    if L in ("wide", "zoom43", "split"):
-        cam = None if job.get("facecam") else find_cam(joined, total)
+    if L in ("wide", "zoom43", "split", "portrait"):
+        cam = None if (job.get("facecam") or job.get("cam")) else find_cam(joined, total)
+        if job.get("cam"):                           # found on the whole source video (steadier than one short clip)
+            cam = (tuple(job["cam"][0]), tuple(job["cam"][1]))
         if job.get("facecam"):
             f = job["facecam"]; cam = (tuple(f), (f[0], f[1], f[0] + f[2], f[1] + f[3]))
         print(f"   facecam: {'found at ' + str([round(float(v), 3) for v in cam[1]]) if cam else 'none'}  brightness {br:.0f}", flush=True)
-    if L == "split" and not cam:                     # no streamer cam -> fall back to the zoomed layout
-        L = "zoom43"; T = {**T, "game_y": 560}
+    if L == "split" and not cam:                     # no streamer cam -> fall back to the hype layout
+        hy = json.load(open(os.path.join(K, "templates.json")))["hype"]
+        T = {**T, **{k: hy[k] for k in ("layout", "game_ar", "game_y", "cap_y")}, "hook_y": hy["hook_y"]}
+        if T.get("hook_mode") in ("seam", "meme", "none"): T["hook_mode"] = "box"
+        L = "portrait"
+        print("   no facecam found -> using the hype layout", flush=True)
     BGS = {"dark": "eq=brightness=-0.12:saturation=1.2",
            "cool": "eq=brightness=-0.3:saturation=0.9,colorbalance=bs=0.12:rs=-0.08"}
     bgf = (f"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,gblur=sigma=45,"
@@ -335,9 +383,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     elif L == "blur":
         base = ("[0:v]split[b][f];[b]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
                 f"boxblur=40:6,eq=brightness=-0.15:saturation=1.1[bg];[f]scale=1080:-2{lift}[fg];[bg][fg]overlay=0:(H-h)/2[base]")
-    elif L in ("wide", "zoom43"):
-        ar = 16 / 9 if L == "wide" else 4 / 3
-        gx, gy, gw, gh = game_rect(ar, cam[1] if cam else None, sw, shh)
+    elif L in ("wide", "zoom43", "portrait"):
+        ar = T.get("game_ar") or {"wide": 16 / 9, "zoom43": 4 / 3, "portrait": 0.8}[L]
+        fx = action_x(joined, total, cam[1] if cam else None) if ar < 1.5 else None
+        gx, gy, gw, gh = game_rect(ar, cam[1] if cam else None, sw, shh, fx)
         oh = int(1080 / ar) // 2 * 2
         base = (f"[0:v]split[b][f];[b]{bgf}[bg];[f]crop={gw}:{gh}:{gx}:{gy},scale=1080:{oh}:flags=lanczos,"
                 f"unsharp=5:5:0.7{lift}[fg];[bg][fg]overlay=0:{T.get('game_y', (1920 - oh) // 2)}[base]")

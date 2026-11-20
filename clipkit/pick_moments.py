@@ -75,7 +75,7 @@ def snap(words, s, e):
 
 def clean_hook(h):
     h = re.sub(r"[^\w$?!',.%: -]", "", h or "").strip()
-    return " ".join(h.split()[:9])
+    return " ".join(h.split()[:7])
 
 def build_prompt(words, count, mn, mx, templates, limit):
     tr = "\n".join(lines(words))
@@ -89,8 +89,12 @@ def build_prompt(words, count, mn, mx, templates, limit):
 Pick the {count} best NON-OVERLAPPING moments. Rules:
 - Each moment is between {mn} and {mx} seconds long.
 - Start at the beginning of a sentence/line, end right after the payoff (never mid-sentence).
-- Prefer moments whose opening line is the strongest line (we open with it).
-- "hook" = a punchy on-screen headline of at most 8 words, in your own words, no emojis, no hashtags.
+- 12-20 seconds is best: skip waiting and filler, keep only setup -> payoff.
+- Prefer moments whose opening line is the strongest line (we open with it), and that END on the payoff line.
+- Skip story dialogue between game characters (scripted cutscenes get taken down) and in-game TV/radio.
+- "hook" = a punchy on-screen headline of at most 6 words, in your own words, no emojis, no hashtags.
+  Only describe what the transcript shows really happens. Never invent or exaggerate (a hook the clip does not pay off
+  makes viewers swipe away).
 - Times are in seconds from the transcript timestamps.
 Return ONLY a JSON array, best first, each item exactly:
 {{"start": number, "end": number, "score": number (1-10 overall), "hook": string, "reason": string (one short line)}}

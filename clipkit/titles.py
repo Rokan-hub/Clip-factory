@@ -63,6 +63,7 @@ What is said in the clip: "{transcript[:1500] or '(no speech, gameplay only)'}"
 
 Rules:
 - Use curiosity, stakes, emotion. Never lie about what happens. No clickbait the clip does not pay off.
+- Describe only what is actually in the clip (the on-screen hook and the speech). No swear words in titles or captions.
 - YouTube title: max 70 characters, no hashtags in it.
 - YouTube description: 2-3 short lines, then a call to action.
 - YouTube hashtags: 3-5, specific to this clip (e.g. #GTA6 #ViceCity), first one #shorts.

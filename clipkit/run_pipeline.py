@@ -11,7 +11,7 @@ import argparse, json, os, re, shutil, subprocess, sys, textwrap
 
 K = os.path.dirname(os.path.abspath(__file__))
 GROUP = {"channel1": "gta", "channel2": "stream", "channel3": "video"}
-DEFAULT_TEMPLATE = {"channel1": "hype", "channel2": "split_live", "channel3": "cinematic"}
+DEFAULT_TEMPLATE = {"channel1": "hype", "channel2": "split_live", "channel3": "hype"}
 # fallback rule when no AI chose a template (same 4 presets for every channel)
 KEYWORDS = [
     ("hype", r"(\$\s?\d|\b(cops?|police|chase|wanted|run|shoot|crash|crashed|rob|robbery|heist|cash|fight|fail|go go|oh my god|bro what|dead|died)\b)"),
@@ -46,8 +46,10 @@ def make_sfx():
         p = os.path.join(d, name + ".wav")
         if not os.path.exists(p): sh(["ffmpeg", "-v", "error", "-y", *args, "-ac", "1", p])
 
-def wrap_hook(text, width=17, maxlines=3):
-    return "\\N".join(textwrap.wrap(text.upper(), width=width)[:maxlines])
+def wrap_hook(text, width=17, maxwords=7):
+    """Never cut a hook mid-sentence: shorten by whole words, then wrap."""
+    words = text.split()
+    return "\\N".join(textwrap.wrap(" ".join(words[:maxwords]).upper(), width=width))
 
 def energy_pick(wav, count, mn, mx):
     """No speech? Pick the loudest action windows (explosions, crashes, sirens, screaming)."""
@@ -86,7 +88,7 @@ def main():
     ap.add_argument("--channel", default="channel1", choices=["channel1", "channel2", "channel3"])
     ap.add_argument("--template", default="auto")
     ap.add_argument("--count", type=int, default=5)
-    ap.add_argument("--min", type=float, default=12); ap.add_argument("--max", type=float, default=38)
+    ap.add_argument("--min", type=float, default=12); ap.add_argument("--max", type=float, default=24)
     ap.add_argument("--no-watch", action="store_true", help="skip the Gemini video-watching picker")
     ap.add_argument("--out", default="out")
     ap.add_argument("--words", default=None, help="existing words.json, skips transcription")
@@ -147,9 +149,11 @@ def main():
         picker = (picker + " + " + how) if picker else how
     moments = moments[:a.count + 2]               # a couple of spares in case tightening drops some
     # 3c. tighten every cut locally: drop credits / logo cards / black screens, trim dead lead-in and tail
+    has_cam, cam = True, None
     try:
         import watch, engine
-        cam = engine.find_cam(src, vdur_probe(src))
+        cam = engine.find_cam(src, vdur_probe(src)); has_cam = bool(cam)
+        print(f"   streamer facecam in source: {'yes' if cam else 'no'}", flush=True)
         moments = watch.refine(src, moments, a.min, cam[1] if cam else None)
     except Exception as ex:
         print(f"   cut tightening skipped: {str(ex)[:150]}", flush=True)
@@ -169,14 +173,16 @@ def main():
         elif m.get("template") not in group:
             txt = " ".join(w["w"] for w in words if m["start"] <= w["s"] <= m["end"])
             m["template"] = keyword_template(txt + " " + m.get("hook", ""), a.channel)
-    if a.template == "auto" and len(moments) >= 4:   # the 4 presets work as a set: spread them out
-        names = list(group); cap = max(2, -(-len(moments) // len(names)))
-        cnt = {n: 0 for n in names}
-        for m in moments: cnt[m["template"]] = cnt.get(m["template"], 0) + 1
-        for m in sorted(moments, key=lambda x: x.get("score", 0)):     # move the weakest extras first
-            if cnt[m["template"]] > cap:
-                spare = min(names, key=lambda n: cnt[n])
-                cnt[m["template"]] -= 1; m["template"] = spare; cnt[spare] += 1
+    if a.template == "auto":                          # choose by content, not for variety
+        for m in moments:
+            before = m["template"]
+            if m["template"].startswith("split"):
+                react = m.get("reaction")
+                if not has_cam: m["template"] = "hype"                     # no streamer cam in this video
+                elif react is not None and react < 4: m["template"] = "hype"   # flat face: show the game instead
+                elif m["template"] == "split_meme" and react is not None and react < 7: m["template"] = "split_live"
+            if m["template"] not in group: m["template"] = "hype"
+            if m["template"] != before: print(f"   {before} -> {m['template']} for {m['start']}s (facecam/reaction check)", flush=True)
     used = {}
     for m in moments:
         if not m.get("hook"):
@@ -192,6 +198,7 @@ def main():
         out_mp4 = os.path.join(clips_dir, f"{m['name']}_{m['template']}.mp4")
         job = {"template": m["template"], "channel": a.channel, "source": src, "words": words_path, "out": out_mp4,
                "segments": [{"s": m["start"], "e": m["end"]}], "hook": wrap_hook(m["hook"]), "cta": cta}
+        if cam: job["cam"] = [[float(v) for v in cam[0]], [float(v) for v in cam[1]]]
         jp = os.path.join(work, m["name"] + ".json"); json.dump(job, open(jp, "w"))
         try:
             print(f"   {m['name']}: {m['template']}  {m['start']}s-{m['end']}s", flush=True)

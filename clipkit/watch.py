@@ -17,6 +17,7 @@ import llm
 BASE = os.environ.get("GEMINI_BASE", "https://generativelanguage.googleapis.com").rstrip("/")
 CHUNK, OVERLAP, MAX_TOTAL = 480, 12, 5400      # watch 8-minute pieces, up to 90 minutes in total
 PER_CHUNK = 4
+BANNED_KINDS = {"cutscene", "trailer", "menu"}   # Rockstar removes isolated cutscenes; trailers/menus never hold viewers
 
 def log(*a): print("  [watch]", *a, file=sys.stderr, flush=True)
 
@@ -95,15 +96,26 @@ SATISFACTION (a clear payoff: funny line, crash, reveal, win/fail, big reaction)
 HARD RULES
 - NEVER pick studio logos, "presents" cards, opening/closing credits, title cards, menus, settings or loading screens, black screens,
   still images/slides, or stretches where nothing happens. If a good moment follows such a card, start AFTER the card.
-- Every moment needs a clear PAYOFF. Give its exact time as "payoff".
+- NEVER pick story cutscenes (scripted non-playable scenes: characters talking in a staged scene, no HUD/controls, camera
+  cuts like a film), official trailer or promo footage, in-game TV/radio/movies, or phone, map, inventory, tutorial or pause screens.
+  The publisher takes down clips of isolated cutscenes, and trailers were seen by everyone already. Only real PLAYED gameplay
+  (or, for non-game videos, the creator's own footage) counts. Report what the moment is in "kind".
+- The first 1 second must already show action or a reaction. Never open on a still screen, a menu, or someone looking at a phone.
+- Every moment needs a clear PAYOFF that is ON SCREEN (the hit lands, the crash, the reveal, the punchline, the big reaction).
+  Give its exact time as "payoff". If the payoff happens off screen or after the moment ends, skip the moment.
 - "start" is at most 1.5 s BEFORE the action or line that sets up the payoff. Open on the strongest beat. Never start mid-word.
 - "end" is at most 0.8 s AFTER the payoff. Never trail off into dead time.
-- Length {mn}-{mx} seconds. Moments must not overlap.
-- "hook": a punchy on-screen headline, max 8 words, describing what HAPPENS (your own words, no emojis, no hashtags).
+- Length {mn}-{mx} seconds; 12-20 s is best. Cut waiting, walking and menus out by picking a tighter window. Moments must not overlap.
+- "hook": a punchy on-screen headline, max 6 words, that describes ONLY what is actually visible in this moment.
+  Do not invent or exaggerate (no "zombie" for a bloody man, no "after robbery" if no robbery is shown). Honest curiosity wins:
+  viewers who feel tricked swipe away and the platform shows the channel's next clips to fewer people.
+- "facecam": true if a streamer webcam is visible. "reaction": 0-10, how big and visible the streamer's facial reaction is
+  in this moment (0 = no cam or a flat face, 10 = jaw drop / crying laughing / rage).
 - "reason": one short line.
 {tpl}
 Return ONLY a JSON array, best first, each item exactly:
-{{"start": "MM:SS.s", "end": "MM:SS.s", "payoff": "MM:SS.s", "score": number, "hook": string, "reason": string, "template": string}}
+{{"start": "MM:SS.s", "end": "MM:SS.s", "payoff": "MM:SS.s", "score": number, "hook": string, "reason": string, "template": string,
+  "kind": "gameplay" | "cutscene" | "trailer" | "menu" | "other", "facecam": boolean, "reaction": number}}
 If nothing in this segment is usable, return [].
 """
 
@@ -161,9 +173,15 @@ def pick(src, count, mn, mx, templates, work):
                     pay = parse_t(it["payoff"]) + s if it.get("payoff") not in (None, "") else None
                 except Exception: continue
                 if b - a < max(4, mn * 0.6) or b - a > mx * 1.3 or b > total + 0.5: continue
+                kind = str(it.get("kind") or "gameplay").lower()
+                if kind in BANNED_KINDS:
+                    log(f"skip {a:.0f}-{b:.0f}s: {kind}"); continue
+                try: react = float(it.get("reaction") or 0)
+                except Exception: react = 0.0
                 cand.append({"start": round(a, 2), "end": round(min(b, total), 2), "payoff": pay,
                              "score": float(it.get("score") or 0), "hook": it.get("hook", ""),
-                             "reason": it.get("reason", ""), "template": it.get("template")})
+                             "reason": it.get("reason", ""), "template": it.get("template"),
+                             "kind": kind, "facecam": bool(it.get("facecam")), "reaction": react})
             log(f"piece {i + 1}/{len(parts)}: {len(items)} moment(s)")
         except Exception as e:
             log(f"piece {i + 1}/{len(parts)} failed: {str(e)[:160]}")
@@ -225,7 +243,7 @@ def refine(src, moments, mn=8, cam=None, still=0.6):
             log(f"drop {s:.0f}-{e:.0f}s: mostly cards/static"); continue
         ns, ne = s, e
         first = next((t for k, (t, a) in enumerate(live) if t >= s - 0.5 and a and all(x for _, x in live[k:k + 3])), None)
-        if first is not None and first - s > 1.2: ns = max(0.0, first - 0.5)
+        if first is not None and first - s > 0.8: ns = max(0.0, first - 0.3)    # never open on a still screen
         pay = m.get("payoff")
         if pay and pay < e and e - pay > 1.0: ne = pay + 0.8          # end just after the payoff
         else:

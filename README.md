@@ -63,12 +63,15 @@ Change models with secrets such as `GROQ_MODEL`, `CEREBRAS_MODEL`, `MISTRAL_MODE
 
 | Template | Use for | What it does |
 |---|---|---|
-| `cinematic` | Story, cutscenes, scenery, driving, calm or emotional moments | Widescreen gameplay on a dark blurred fill, teal-orange grade, film grain, vignette, slow push-in, pink word highlight |
-| `hype` | Action, chases, robberies, fails, loud chaos | Big 4:3 zoom with a pulsing zoom, punch-ins on key words, big centre captions with yellow highlight |
-| `split_live` | Streamer commentating over gameplay | Facecam on top (auto-detected, cropped exactly inside its border), red divider, gameplay below, sentence-case captions |
-| `split_meme` | The streamer's reaction is the joke | Big facecam on top, gameplay below, one all-caps meme line on the seam, no word captions |
+| `hype` | **Default.** Action, chases, fights, robberies, fails, funny gameplay | Tall 4:5 gameplay crop that fills 70% of the screen and slides toward the action, pulsing zoom, big captions with yellow highlight |
+| `split_live` | Streamer visibly talking/reacting (needs a facecam) | Facecam on top, red divider, gameplay below, hook line on the seam for the first 3 s, sentence-case captions |
+| `split_meme` | The streamer's face is the joke (needs a strong reaction) | Big facecam on top, gameplay below, one all-caps meme line on the seam (shrinks to fit 2 lines, never cut off), no word captions |
+| `cinematic` | **Manual only.** Calm scenic/graphics shots | Square gameplay on a dark blurred fill, teal-orange grade, grain, vignette, slow push-in |
 
-Every template also has: word-by-word captions with the active word highlighted, hook text for the first 3 s, call-to-action at the end,
+**Auto mode (since 2026-11-20)** picks by content, not for variety: no facecam in the source, or a flat face (reaction under 4/10) -> `hype`;
+a split_meme with only a medium reaction (under 7/10) -> `split_live`. `cinematic` is never picked automatically.
+
+Every template also has: swear words masked in captions (F**K style), captions that clear during silences (max 1 s per word), word-by-word captions with the active word highlighted, hook text for the first 3 s, call-to-action at the end,
 a progress bar along the top (keeps people watching), loudness normalised to −14 LUFS (the Shorts/Reels standard), 1080×1920 at 30 fps.
 
 ## Files
@@ -94,7 +97,7 @@ a progress bar along the top (keeps people watching), loudness normalised to −
 - Run locally: `pip install -r requirements.txt`, install ffmpeg, then `python clipkit/run_pipeline.py --source video.mp4 --channel channel1 --count 6`
 
 ## How moments are picked (since 2026-11-20)
-1. **Gemini watches the video** (8-minute pieces, low-res copy, free Files API) and returns, for each moment, the payoff time, a tight start/end, a hook, a score and the best preset. It is told to skip credits, logo/"presents" cards, title cards, menus, loading and black screens. Needs `GEMINI_API_KEY`.
+1. **Gemini watches the video** (8-minute pieces, low-res copy, free Files API) and returns, for each moment, the payoff time, a tight start/end, a hook, a score and the best preset. It is told to skip credits, logo/"presents" cards, title cards, menus, loading and black screens, and every moment it returns is labelled `kind`: **story cutscenes, trailer footage and menu/phone screens are dropped** (Rockstar takes down isolated cutscenes). Hooks must describe only what is on screen (max 6 words). Needs `GEMINI_API_KEY`.
 2. **Local cut tightening** on every clip (any picker): finds credit/logo/black cards by their flat background (cards 0.55-1.0, gameplay under 0.46) and by lack of motion, drops clips that are mostly cards, cuts a dead lead-in, and ends just after the payoff.
 3. If watching fails or finds too few, the old transcript picker (or loudest-action picker for no-speech video) tops it up, so a run never dies. The run summary shows `moments picked by: ...`.
-Clip length is now 12-38 s by default. Turn the watcher off with `CF_WATCH=0` or `--no-watch`; cap the time it may spend with `CF_WATCH_BUDGET` (seconds, default 1500).
+Clip length is now 12-24 s by default (12-20 s is the target). Turn the watcher off with `CF_WATCH=0` or `--no-watch`; cap the time it may spend with `CF_WATCH_BUDGET` (seconds, default 1500).

@@ -1,34 +1,31 @@
 {
  "_groups": {
   "gta": [
-   "cinematic",
    "hype",
    "split_live",
    "split_meme"
   ],
   "stream": [
-   "cinematic",
    "hype",
    "split_live",
    "split_meme"
   ],
   "video": [
-   "cinematic",
    "hype",
    "split_live",
    "split_meme"
   ]
  },
  "cinematic": {
-  "desc": "Story, cutscenes, scenery, graphics, driving showcases, calm or emotional moments: widescreen gameplay on a dark blurred fill, teal-orange grade, film grain, vignette, slow push-in",
+  "desc": "Only calm scenic or graphics-showcase shots with no action and little speech (sunsets, city views, detail close-ups). Square gameplay on a dark blurred fill, teal-orange grade, grain, slow push-in",
   "layout": "wide",
-  "game_y": 656,
+  "game_y": 420,
   "bg": "cool",
   "hook_mode": "box",
-  "hook_y": 420,
+  "hook_y": 230,
   "cta": true,
-  "cta_y": 1760,
-  "cap_y": 1500,
+  "cta_y": 1700,
+  "cap_y": 1330,
   "cap_size": 96,
   "words_per": 3,
   "cap_font": "Poppins",
@@ -43,18 +40,19 @@
   "grain": true,
   "vignette": true,
   "progress": true,
-  "bar": "FF2D55"
+  "bar": "FF2D55",
+  "game_ar": 1.0
  },
  "hype": {
-  "desc": "Action, chases, fights, robberies, fails, crashes, loud chaos: big zoomed gameplay with a pulsing zoom, big centre captions with yellow highlight",
-  "layout": "zoom43",
-  "game_y": 560,
+  "desc": "Default for anything with action or gameplay: chases, fights, robberies, fails, crashes, chaos, funny gameplay. Tall 4:5 gameplay crop that fills most of the screen and follows the action, big captions with yellow highlight",
+  "layout": "portrait",
+  "game_y": 330,
   "bg": "dark",
   "hook_mode": "box",
-  "hook_y": 260,
+  "hook_y": 165,
   "cta": true,
-  "cta_y": 1700,
-  "cap_y": 1000,
+  "cta_y": 1800,
+  "cap_y": 1170,
   "cap_size": 112,
   "words_per": 3,
   "cap_font": "Poppins",
@@ -67,17 +65,18 @@
   "sfx_emph": null,
   "grade": "punchy",
   "progress": true,
-  "bar": "00E5FF"
+  "bar": "00E5FF",
+  "game_ar": 0.8
  },
  "split_live": {
-  "desc": "Streamer talking or commentating over what is on screen (first reactions, explaining, hyping the game): facecam on top, gameplay below, sentence-case word captions over the gameplay",
+  "desc": "Streamer visibly talking or reacting to what is on screen (shocked, laughing, explaining, hyping). Needs a facecam with a clear reaction. Facecam on top, gameplay below, hook line on the seam for the first 3 s, sentence-case word captions",
   "layout": "split",
   "top_h": 520,
   "divider": "E8442B",
   "divider_h": 10,
-  "hook_mode": "none",
+  "hook_mode": "seam",
   "cta": false,
-  "cap_y": 650,
+  "cap_y": 760,
   "cap_size": 96,
   "words_per": 3,
   "cap_font": "Poppins",
@@ -89,10 +88,11 @@
   "sfx_cut": null,
   "sfx_emph": null,
   "grade": "punchy",
-  "progress": false
+  "progress": false,
+  "hook_secs": 3.2
  },
  "split_meme": {
-  "desc": "The streamer's face or reaction is the joke (funny face, overexcited, shocked, roast): big facecam on top, gameplay below, one all-caps meme line on the seam, no word captions",
+  "desc": "The streamer's face IS the joke: a big, obvious facial reaction (jaw drop, crying laughing, rage). Needs a facecam with a strong visible reaction. Big facecam on top, one short all-caps meme line on the seam, no word captions",
   "layout": "split",
   "top_h": 700,
   "divider": null,
@@ -110,6 +110,27 @@
   "sfx_cut": null,
   "sfx_emph": null,
   "grade": "punchy",
-  "progress": false
- }
+  "progress": false,
+  "meme_fit": [
+   [
+    96,
+    20
+   ],
+   [
+    82,
+    24
+   ],
+   [
+    70,
+    28
+   ],
+   [
+    60,
+    33
+   ]
+  ]
+ },
+ "_manual_only": [
+  "cinematic"
+ ]
 }
