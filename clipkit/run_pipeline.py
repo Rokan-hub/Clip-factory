@@ -27,6 +27,11 @@ NO_SPEECH_HOOKS = {
 
 def sh(cmd, **kw): subprocess.run(cmd, check=True, **kw)
 
+def vdur_probe(src):
+    o = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", src],
+                       capture_output=True, text=True).stdout.strip()
+    return float(o or 0)
+
 def make_sfx():
     d = os.path.join(K, "sfx"); os.makedirs(d, exist_ok=True)
     recipes = {
@@ -81,7 +86,8 @@ def main():
     ap.add_argument("--channel", default="channel1", choices=["channel1", "channel2", "channel3"])
     ap.add_argument("--template", default="auto")
     ap.add_argument("--count", type=int, default=5)
-    ap.add_argument("--min", type=float, default=15); ap.add_argument("--max", type=float, default=45)
+    ap.add_argument("--min", type=float, default=12); ap.add_argument("--max", type=float, default=38)
+    ap.add_argument("--no-watch", action="store_true", help="skip the Gemini video-watching picker")
     ap.add_argument("--out", default="out")
     ap.add_argument("--words", default=None, help="existing words.json, skips transcription")
     ap.add_argument("--required", default="", help='campaign text to put in descriptions, e.g. "@brand #ad"')
@@ -107,16 +113,49 @@ def main():
     # 2. moments
     print("== 3/5 picking best moments", flush=True)
     moments_path = os.path.join(out, "moments.json")
-    if len(words) >= 40:
-        cmd = [sys.executable, os.path.join(K, "pick_moments.py"), words_path, moments_path,
-               "--count", str(a.count), "--min", str(a.min), "--max", str(a.max)]
-        if a.template == "auto": cmd += ["--templates", json.dumps(group)]
-        sh(cmd)
-        moments = json.load(open(moments_path))
-    else:
-        print("   little/no speech found -> picking the loudest action moments instead", flush=True)
-        moments = energy_pick(wav, a.count, a.min, a.max)
-        for i, m in enumerate(moments, 1): m["name"] = f"clip{i:02d}"
+    # 3a. best: Gemini WATCHES the video and returns the payoff and tight cut points (falls back on any failure)
+    moments, picker = [], None
+    if not a.no_watch and os.environ.get("CF_WATCH", "1") != "0" and os.environ.get("GEMINI_API_KEY", "").strip():
+        try:
+            import watch
+            moments = watch.pick(src, a.count + 2, a.min, a.max, group if a.template == "auto" else None,
+                                 os.path.join(work, "watch"))
+            for m in moments:
+                if m.get("template") not in group: m.pop("template", None)
+            picker = "gemini-video"
+            print(f"   Gemini watched the video: {len(moments)} candidate moments", flush=True)
+        except Exception as ex:
+            print(f"   !! video watching failed ({str(ex)[:200]}), using the transcript picker instead", flush=True)
+            moments = []
+        try:
+            import llm; llm.save_log(os.path.join(out, "ai_usage.json")); llm.LOG.clear()
+        except Exception: pass
+    # 3b. fallback / top-up: transcript picker, or loudest action when there is no speech
+    if len(moments) < a.count:
+        if len(words) >= 40:
+            cmd = [sys.executable, os.path.join(K, "pick_moments.py"), words_path, moments_path,
+                   "--count", str(a.count), "--min", str(a.min), "--max", str(a.max)]
+            if a.template == "auto": cmd += ["--templates", json.dumps(group)]
+            sh(cmd)
+            extra = json.load(open(moments_path)); how = "transcript"
+        else:
+            print("   little/no speech found -> picking the loudest action moments instead", flush=True)
+            extra = energy_pick(wav, a.count, a.min, a.max); how = "loudest-action"
+        for m in extra:
+            if not any(not (m["end"] <= o["start"] or m["start"] >= o["end"]) for o in moments):
+                m.setdefault("reason", how); moments.append(m)
+        picker = (picker + " + " + how) if picker else how
+    moments = moments[:a.count + 2]               # a couple of spares in case tightening drops some
+    # 3c. tighten every cut locally: drop credits / logo cards / black screens, trim dead lead-in and tail
+    try:
+        import watch, engine
+        cam = engine.find_cam(src, vdur_probe(src))
+        moments = watch.refine(src, moments, a.min, cam[1] if cam else None)
+    except Exception as ex:
+        print(f"   cut tightening skipped: {str(ex)[:150]}", flush=True)
+    moments = sorted(moments, key=lambda m: -m.get("score", 0))[:a.count]
+    for i, m in enumerate(moments, 1): m["name"] = f"clip{i:02d}"
+    print(f"   moments picked by: {picker}", flush=True)
     vdur = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", src],
                                 capture_output=True, text=True).stdout.strip() or 0)
     if vdur:
